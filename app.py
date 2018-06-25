@@ -59,7 +59,7 @@ class Watcher(object):
         self.handler.start()
 
         self.observer = Observer()
-        self.observer.schedule(self.handler, self.wdir, recursive=True)
+        self.observer.schedule(self.handler, os.path.realpath(self.wdir), recursive=True)
         self.observer.start()
 
         self.watcher_thread= Thread(target=self._run_watcher)
@@ -167,7 +167,7 @@ def flatten_dict(d):
 def list_files(startpath):
     summary = {}
     count = 0
-    for dirpath, dirnames, filenames in os.walk(startpath):
+    for dirpath, dirnames, filenames in os.walk(startpath, followlinks=True):
         dirpath = dirpath.replace(startpath,'')
 
         xml_count = 0
