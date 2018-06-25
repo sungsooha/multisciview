@@ -446,7 +446,7 @@ def main(host, port, rootdir):
         port=MONGODB_CONFIG['DB']['PORT']
     )
     g_parser = Parser(config=MONGODB_CONFIG['XML'])
-    root_dir = root_dir
+    root_dir = rootdir
 
     try:
         app.run(host=host, port=port)
