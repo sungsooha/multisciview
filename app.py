@@ -10,6 +10,7 @@ from bson.objectid import ObjectId
 from time import sleep
 from uuid import uuid4
 import argparse
+import json
 
 # Flask application
 app = Flask(__name__)
@@ -215,11 +216,19 @@ def list_files(startpath):
 def _get_current_data_stat():
     pipeline = [{"$group": {"_id": "$sample", "count": {"$sum": 1}}}]
     res = list(g_db.collection.aggregate(pipeline))
+    #print(res)
     resDict = {}
     for r in res:
         sampleName = r['_id']
         count = r['count']
+
+        if type(sampleName) is list:
+            continue
+
         resDict[sampleName] = count
+
+        print(sampleName, count)
+    #print(resDict)
     return resDict
 
 @app.route('/api/watcher/dirlist', methods=['GET'])
@@ -234,7 +243,11 @@ def get_watcher_dirlist():
     dirList = []
     for key, value in dirDict.items():
         dirList.append([value['id'], value])
-    return jsonify({'dirList': dirList, 'nodeid': nodeid})
+    return json.dumps({
+        'dirList': dirList,
+        'nodeid': nodeid
+    })
+    #return jsonify({'dirList': dirList, 'nodeid': nodeid})
 
 @app.route('/api/watcher/connect', methods=['GET'])
 def get_watcher_connect():
@@ -254,9 +267,11 @@ def get_watcher_connect():
             _dh.start()
         _dh.incNumUsers()
     except FileNotFoundError:
-        return jsonify({'status': False, 'message': 'FileNotFoundError'})
+        return json.dumps({'status': False, 'message': 'FileNotFoundError'})
+        #return jsonify({'status': False, 'message': 'FileNotFoundError'})
 
-    return jsonify({'status': True, 'message': 'DB connected'})
+    return json.dumps({'status': True, 'message': 'DB connected'})
+    #return jsonify({'status': True, 'message': 'DB connected'})
 
 @app.route('/api/watcher/disconnect', methods=['GET'])
 def get_watcher_disconnect():
@@ -270,9 +285,11 @@ def get_watcher_disconnect():
             _dh.stop()
             del watcherGroup[wdir]
     except KeyError:
-        return jsonify({'status': False, 'message': 'Unknow parameters {:s}'.format(wdir)})
+        return json.dumps({'status': False, 'message': 'Unknow parameters {:s}'.format(wdir)})
+        #return jsonify({'status': False, 'message': 'Unknow parameters {:s}'.format(wdir)})
 
-    return jsonify({'status': False, 'message': 'DB disconnected'})
+    return json.dumps({'status': False, 'message': 'DB disconnected'})
+    #return jsonify({'status': False, 'message': 'DB disconnected'})
 
 @app.route('/api/sync', methods=['GET'])
 def get_sync():
@@ -288,7 +305,8 @@ def get_sync():
     total = len(sync_worker.all_files)
 
     syncerGroup[syncId].start()
-    return jsonify({'id': syncId, 'total': total})
+    return json.dumps({'id': syncId, 'total': total})
+    #return jsonify({'id': syncId, 'total': total})
 
 @app.route('/api/sync/stop', methods=['GET'])
 def get_sync_stop():
@@ -297,12 +315,14 @@ def get_sync_stop():
     print(syncId)
 
     if syncId not in syncerGroup:
-        return jsonify({})
+        return json.dumps({})
+        #return jsonify({})
 
     sync_worker = syncerGroup[syncId]
     sync_worker.stop()
     del syncerGroup[syncId]
-    return jsonify({})
+    return json.dumps({})
+    #return jsonify({})
 
 @app.route('/api/sync/progress', methods=['GET'])
 def get_sync_progress():
@@ -310,7 +330,8 @@ def get_sync_progress():
     syncId = str(request.args.get('id'))
 
     if syncId not in syncerGroup:
-        return jsonify({'id': None, 'processed': 0, 'total': 0, 'finished': True})
+        return json.dumps({'id': None, 'processed': 0, 'total': 0, 'finished': True})
+        #return jsonify({'id': None, 'processed': 0, 'total': 0, 'finished': True})
 
     sync_worker = syncerGroup[syncId]
     processed = sync_worker.processed
@@ -318,7 +339,9 @@ def get_sync_progress():
     finished = sync_worker.finished
     if sync_worker.finished:
         del syncerGroup[syncId]
-    return jsonify({'id': syncId,'processed': processed, 'total': total, 'finished': finished})
+
+    return json.dumps({'id': syncId,'processed': processed, 'total': total, 'finished': finished})
+    #return jsonify({'id': syncId,'processed': processed, 'total': total, 'finished': finished})
 
 @app.route('/api/watcher/monitor', methods=['GET'])
 def get_watcher_monitor():
@@ -329,13 +352,17 @@ def get_watcher_monitor():
     try:
         _dh = watcherGroup[wdir]
     except KeyError:
-        return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        return json.dumps({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        #return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
 
     if _dh is None:
         print('[!][{:s}] No watcher handler'.format(wdir))
-        return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        return json.dumps({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        #return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
+
     if _dh.flag > 0:
         print('[!][{:s}] Busy watcher handler'.format(wdir))
+        return json.dumps({'sampleList': [], 'sampleData': {}, 'stat': stat})
         return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
 
     _dh.setFlag(2)
@@ -343,7 +370,8 @@ def get_watcher_monitor():
     if len(eventlist) == 0:
         print('[!][{:s}] Empty event list'.format(wdir))
         _dh.setFlag(0)
-        return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        return json.dumps({'sampleList': [], 'sampleData': {}, 'stat': stat})
+        #return jsonify({'sampleList': [], 'sampleData': {}, 'stat': stat})
     _dh.setFlag(0)
 
     #print('[DEBUG] Handle events: ', eventlist)
@@ -380,22 +408,35 @@ def get_watcher_monitor():
         else:
             sampleList.append(sampleName)
             sampleData[sampleName] = [res]
-    return jsonify({
+
+    return json.dumps({
         'sampleList': sampleList,
         'sampleData': sampleData,
         'stat': stat
     })
+    # return jsonify({
+    #     'sampleList': sampleList,
+    #     'sampleData': sampleData,
+    #     'stat': stat
+    # })
 
 @app.route('/api/data/stat', methods=['GET'])
 def get_current_data_stat():
-    return jsonify(_get_current_data_stat())
+    #return jsonify({})
+    stat = _get_current_data_stat()
+
+    print(type(stat))
+    print(stat)
+
+    return json.dumps(stat)
 
 @app.route('/api/data/sample', methods=['GET'])
 def get_sample():
     global g_db
 
     if g_db is None:
-        return jsonify({'sampleList': [], 'sampleData': {}, 'stat': {}})
+        return json.duœmps({'sampleList': [], 'sampleData': {}, 'stat': {}})
+        #return jsonify({'sampleList': [], 'sampleData': {}, 'stat': {}})
     sampleList = request.args.getlist('name[]')
 
     sampleData = {}
@@ -409,28 +450,37 @@ def get_sample():
         res = [flatten_dict(d) for d in res]
         sampleData[sample] = res
 
-    return jsonify({
+    return json.dumps({
         'sampleList': sampleList,
         'sampleData': sampleData,
         'stat': _get_current_data_stat()
     })
 
+    # return jsonify({
+    #     'sampleList': sampleList,
+    #     'sampleData': sampleData,
+    #     'stat': _get_current_data_stat()
+    # })
+
 @app.route('/api/data/tiff/<id>', methods=['GET'])
 def get_tiff(id):
     global g_db
     if g_db is None:
-        return jsonify({})
+        return json.dumps({})
+        #return jsonify({})
 
     query = {'_id': ObjectId(id), 'tiff':{'$exists':True}}
     fields = {'tiff': 1, '_id': 0}
     res = g_db.load(query, fields, getarrays=True)
 
     if res is None:
-        return jsonify({})
+        return json.dumps({})
+        #return jsonify({})
 
     data = res['tiff']['data']
     res['tiff']['data'] = data.tolist()
-    return jsonify(res['tiff'])
+    return json.dumps(res['tiff'])
+    #return jsonify(res['tiff'])
 
 @app.route('/')
 def start():
