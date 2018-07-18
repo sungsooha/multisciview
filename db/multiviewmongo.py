@@ -3,6 +3,7 @@ from bson.objectid import ObjectId
 import gridfs
 import pymongo
 from pymongo import ReturnDocument
+from pymongo.errors import ConnectionFailure
 import pickle
 import numpy as np
 import datetime
@@ -21,16 +22,51 @@ class MultiViewMongo(object):
         self.hostname = hostname
         self.port = port
 
+        # Beginning in PyMongo 3 (not Python 3, PyMongo 3!), the MongoClient constructor no longer blocks
+        # trying to connect to the MongoDB server. Instead, the first actual operation you do will wait
+        # until the connection completes, and then throw an exception if connection fails.
         self.connection = pymongo.MongoClient(hostname, port)
-        #if (username != ""):
-        #    admin_db = self.connection["admin"]
-        #    admin_db = admin_db.authenticate(username, password)
+        try:
+            self.connection.list_database_names()
+            #self.connection.database_names()
+        except ConnectionFailure:
+            exit("MondoDB server is not available.")
 
+        # self.db = self.connection[self.db_name]
+        # self.collection = self.db[collection_name]
+        # self.fs = gridfs.GridFS(self.db, 'fs')
+        # print('Run mongdo database')
+        # print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
+
+    def get_db_names(self):
+        return [name for name in self.connection.list_database_names() if name not in ['admin', 'local']]
+
+    def get_col_names(self, db):
+        return [name for name in self.connection[db].collection_names() if 'fs.' not in name]
+
+    def get_sample_names(self, db, col):
+        pipeline = [
+            {
+                "$match": {
+                    "sample": {"$exists": True, "$ne": None}
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$sample",
+                    "count": {"$sum": 1}
+                }
+            }
+        ]
+        res = list(self.connection[db][col].aggregate(pipeline))
+        return res
+
+    def open(self, db_name, collection_name):
+        self.db_name = db_name
+        self.collection_name = collection_name
         self.db = self.connection[self.db_name]
+        self.collection = self.db[self.collection_name]
         self.fs = gridfs.GridFS(self.db, 'fs')
-
-        self.collection = self.db[collection_name]
-
         print('Run mongdo database')
         print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
 

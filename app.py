@@ -213,10 +213,10 @@ def list_files(startpath):
         count += 1
     return summary
 
+# deprecated, don't use
 def _get_current_data_stat():
     pipeline = [{"$group": {"_id": "$sample", "count": {"$sum": 1}}}]
     res = list(g_db.collection.aggregate(pipeline))
-    #print(res)
     resDict = {}
     for r in res:
         sampleName = r['_id']
@@ -227,9 +227,49 @@ def _get_current_data_stat():
 
         resDict[sampleName] = count
 
-        print(sampleName, count)
+        #print(sampleName, count)
     #print(resDict)
     return resDict
+
+@app.route('/api/db', methods=['GET'])
+def get_db_info():
+
+    db = request.args.get('db')
+    col = request.args.get('col')
+
+    db_names = g_db.get_db_names()
+    if db is None:
+        try:
+            db_selected = db_names[0]
+        except IndexError:
+            db_selected = None
+    else:
+        db_selected = db
+        if db not in db_names:
+            db_names = [db] + db_names
+
+    col_names = g_db.get_col_names(db_selected) if db_selected is not None else []
+    if col is None:
+        try:
+            col_selected = col_names[0]
+        except IndexError:
+            col_selected = None
+    else:
+        col_selected = col
+        if col not in col_names:
+            col_names = [col] + col_names
+
+    sample_names = []
+    if db_selected is not None and col_selected is not None:
+        sample_names = g_db.get_sample_names(db_selected, col_selected)
+
+    return json.dumps({
+        'db': db_selected,
+        'col': col_selected,
+        'dbList': db_names,
+        'colList': col_names,
+        'sampleList': sample_names
+    })
 
 @app.route('/api/watcher/dirlist', methods=['GET'])
 def get_watcher_dirlist():
@@ -420,14 +460,10 @@ def get_watcher_monitor():
     #     'stat': stat
     # })
 
+# deprecated
 @app.route('/api/data/stat', methods=['GET'])
 def get_current_data_stat():
-    #return jsonify({})
     stat = _get_current_data_stat()
-
-    print(type(stat))
-    print(stat)
-
     return json.dumps(stat)
 
 @app.route('/api/data/sample', methods=['GET'])
@@ -435,10 +471,13 @@ def get_sample():
     global g_db
 
     if g_db is None:
-        return json.duœmps({'sampleList': [], 'sampleData': {}, 'stat': {}})
-        #return jsonify({'sampleList': [], 'sampleData': {}, 'stat': {}})
-    sampleList = request.args.getlist('name[]')
+        return json.dumps({'sampleList': [], 'sampleData': {}})
 
+    sampleList = request.args.getlist('name[]')
+    db = request.args.get('db')
+    col = request.args.get('col')
+
+    g_db.open(db, col)
     sampleData = {}
     for sample in sampleList:
         query = {"sample": sample}
@@ -446,21 +485,17 @@ def get_sample():
 
         if not isinstance(res, list):
             res = [res]
+
         res = [replace_objid_to_str(doc) for doc in res]
         res = [flatten_dict(d) for d in res]
+        for d in res:
+            d['sample'] = '[{:s}][{:s}]{:s}'.format(db, col, sample)
         sampleData[sample] = res
 
     return json.dumps({
         'sampleList': sampleList,
-        'sampleData': sampleData,
-        'stat': _get_current_data_stat()
+        'sampleData': sampleData
     })
-
-    # return jsonify({
-    #     'sampleList': sampleList,
-    #     'sampleData': sampleData,
-    #     'stat': _get_current_data_stat()
-    # })
 
 @app.route('/api/data/tiff/<id>', methods=['GET'])
 def get_tiff(id):
