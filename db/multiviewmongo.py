@@ -32,11 +32,11 @@ class MultiViewMongo(object):
         except ConnectionFailure:
             exit("MondoDB server is not available.")
 
-        # self.db = self.connection[self.db_name]
-        # self.collection = self.db[collection_name]
-        # self.fs = gridfs.GridFS(self.db, 'fs')
-        # print('Run mongdo database')
-        # print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
+        self.db = self.connection[self.db_name]
+        self.collection = self.db[collection_name]
+        self.fs = gridfs.GridFS(self.db, 'fs')
+        print('Run mongdo database')
+        print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
 
     def get_db_names(self):
         return [name for name in self.connection.list_database_names() if name not in ['admin', 'local']]
@@ -62,13 +62,14 @@ class MultiViewMongo(object):
         return res
 
     def open(self, db_name, collection_name):
-        self.db_name = db_name
-        self.collection_name = collection_name
-        self.db = self.connection[self.db_name]
-        self.collection = self.db[self.collection_name]
-        self.fs = gridfs.GridFS(self.db, 'fs')
-        print('Run mongdo database')
-        print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
+        if self.db_name != db_name and self.collection_name != collection_name:
+            self.db_name = db_name
+            self.collection_name = collection_name
+            self.db = self.connection[self.db_name]
+            self.collection = self.db[self.collection_name]
+            self.fs = gridfs.GridFS(self.db, 'fs')
+            print('Run mongdo database')
+            print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
 
     def _close(self):
         print('Close mongdo database')

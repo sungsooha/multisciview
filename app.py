@@ -7,10 +7,12 @@ from db.watcher_utils import xmlParser as Parser
 from db.watcher import Handler
 from threading import Thread
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from time import sleep
 from uuid import uuid4
 import argparse
 import json
+
 
 # Flask application
 app = Flask(__name__)
@@ -490,6 +492,7 @@ def get_sample():
         res = [flatten_dict(d) for d in res]
         for d in res:
             d['sample'] = '[{:s}][{:s}]{:s}'.format(db, col, sample)
+            d['_id'] = '[{:s}][{:s}]{:s}'.format(db, col, d['_id'])
         sampleData[sample] = res
 
     return json.dumps({
@@ -497,25 +500,33 @@ def get_sample():
         'sampleData': sampleData
     })
 
-@app.route('/api/data/tiff/<id>', methods=['GET'])
-def get_tiff(id):
+@app.route('/api/data/tiff', methods=['GET'])
+def get_tiff():
     global g_db
     if g_db is None:
         return json.dumps({})
-        #return jsonify({})
 
-    query = {'_id': ObjectId(id), 'tiff':{'$exists':True}}
+    db = request.args.get('db')
+    col = request.args.get('col')
+    _id = request.args.get('_id')
+
+    try:
+        _id = ObjectId(_id)
+    except InvalidId:
+        return json.dumps({})
+
+    g_db.open(db, col)
+
+    query = {'_id': _id, 'tiff':{'$exists':True}}
     fields = {'tiff': 1, '_id': 0}
     res = g_db.load(query, fields, getarrays=True)
 
     if res is None:
         return json.dumps({})
-        #return jsonify({})
 
     data = res['tiff']['data']
     res['tiff']['data'] = data.tolist()
     return json.dumps(res['tiff'])
-    #return jsonify(res['tiff'])
 
 @app.route('/')
 def start():
