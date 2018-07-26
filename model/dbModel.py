@@ -2,6 +2,7 @@ import os
 import json
 import pymongo
 from pymongo.errors import ConnectionFailure
+from db.multiviewmongo import MultiViewMongo
 
 class dbModel(object):
     def __init__(
@@ -92,7 +93,8 @@ class dbModel(object):
                     'children': [],  # list of absolute pathes of direct children directories
                     'parent': None,  # absolute path to direct parent directory
                     'db': None,      # related database (db, collection)
-                    'valid': True
+                    'valid': True,
+                    'inSync': False,
                 }
             else:
                 fsmap[parent_path]['children'].append(dirpath)
@@ -102,12 +104,9 @@ class dbModel(object):
                     'children': [],
                     'parent': fsmap[parent_path]['path'],
                     'db': None,
-                    'valid': True
+                    'valid': True,
+                    'inSync': False
                 }
-
-        def __is_same(itemA:dict, itemB:dict):
-            if not (itemA['parent'] is itemB['parent']): return False
-            return True
 
         def __merge_fsmap(dstMap:dict, srcMap:dict):
             for key, srcItem in srcMap.items():
@@ -117,12 +116,15 @@ class dbModel(object):
                     # sub-directories. But, we do not care, here.
                     dstItem = dstMap[key]
                     dstItem['db'] = srcItem['db']
+                    dstItem['valid'] = srcItem['valid']
+                    dstItem['inSync'] = srcItem['inSync']
                 else:
                     # This branch can happen when one delete/move/add subdirectories.
                     # Keep it, so that one can fix it manually in the json file.
                     srcItem['children'] = []
                     srcItem['parent'] = None
                     srcItem['valid'] = False
+                    #srcItem['inSync'] = False
                     dstMap[key] = srcItem
 
         __merge_fsmap(fsmap, self.fsMap)
@@ -155,8 +157,25 @@ class dbModel(object):
         ]
         return list(self.client[db][col].aggregate(pipeline))
 
-    def get_client(self, db, col, fs='fs'):
-        pass
+    def get_client(self, db_collection_fs):
+        if db_collection_fs is None:
+            return None
+
+        db = db_collection_fs[0]
+        col = db_collection_fs[1]
+        fs = db_collection_fs[2]
+        key = '{}:{}:{}'.format(db, col, fs)
+        if key in self.clientPool:
+            h = self.clientPool[key]
+        else:
+            h = MultiViewMongo(
+                connection=self.client,
+                db_name=db,
+                collection_name=col,
+                fs_name=fs
+            )
+            self.clientPool[key] = h
+        return h
 
     def get_files_to_sync(self, wdir):
         """
@@ -169,17 +188,31 @@ class dbModel(object):
 
         f = []
         for dirpath, _, files in os.walk(wdir):
-            if dirpath not in self.fsMap or self.fsMap[dirpath]['db'] is None:
+            if dirpath not in self.fsMap or \
+                self.fsMap[dirpath]['db'] is None or \
+                self.fsMap[dirpath]['inSync']:
                 continue
+
+            self.fsMap[dirpath]['inSync'] = True
 
             item = {
                 'path': dirpath,
                 'files': [file for file in files if os.path.splitext(file)[1] in self.supported_ext],
-                'client': self.fsMap[dirpath]['db']
+                'client': self.get_client(self.fsMap[dirpath]['db'])
             }
             f.append(item)
-
+        self._save_map()
         return f
+
+    def unlock_files_to_sync(self, files_to_sync):
+        for item in files_to_sync:
+            dirpath = item['path']
+
+            if dirpath not in self.fsMap:
+                continue
+
+            self.fsMap[dirpath]['inSync'] = False
+        self._save_map()
 
 
 

@@ -16,10 +16,11 @@ MONGODB_CONFIG = {
     # parsing xml file
     'XML': {
         # root directory relative to ROOT
+        # deprecated
         'DIR': 'analysis_proper/results/',
 
         # sample name split
-        'SAMPLE_SPLIT': '_th0.',
+        'SAMPLE_SPLIT': ['_th', '_thresh'],
 
         # for same protocol, use COMPARE field
         'TIMESTAMP': 'save_timestamp',

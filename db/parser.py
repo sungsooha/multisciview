@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import ParseError
 from PIL import Image
 
-class xmlParser(object):
+class Parser(object):
     def __init__(self, config):
         self.config = config
 
@@ -47,7 +47,10 @@ class xmlParser(object):
                 return None
             item_name = os.path.splitext(item_name)[0]
 
-            sample_name = item_name.split(self.config['SAMPLE_SPLIT'])[0]
+            sample_name = item_name
+            for sep in self.config['SAMPLE_SPLIT']:
+                sample_name = sample_name.split(sep)[0]
+            #sample_name = item_name.split(self.config['SAMPLE_SPLIT'])[0]
             doc['item'] = item_name
             doc['sample'] = sample_name
 

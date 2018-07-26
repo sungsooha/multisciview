@@ -377,53 +377,6 @@ def get_watcher_monitor():
 #     stat = _get_current_data_stat()
 #     return json.dumps(stat)
 
-@app.route('/api/data/sample', methods=['GET'])
-def get_sample():
-    sampleList = request.args.getlist('name[]')
-    db = request.args.get('db')
-    col = request.args.get('col')
-
-    h = g_db.open(db, col)
-    sampleData = {}
-    for sample in sampleList:
-        query = {"sample": sample}
-        res = h.load(query=query, fields={}, getarrays=False)
-
-        if not isinstance(res, list):
-            res = [res]
-
-        res = [replace_objid_to_str(doc) for doc in res]
-        res = [flatten_dict(d) for d in res]
-        for d in res:
-            d['sample'] = '[{:s}][{:s}]{:s}'.format(db, col, sample)
-            d['_id'] = '[{:s}][{:s}]{:s}'.format(db, col, d['_id'])
-        sampleData[sample] = res
-
-    return json.dumps({
-        'sampleList': sampleList,
-        'sampleData': sampleData
-    })
-
-@app.route('/api/data/tiff', methods=['GET'])
-def get_tiff():
-    db = request.args.get('db')
-    col = request.args.get('col')
-    _id = request.args.get('_id')
-    try:
-        _id = ObjectId(_id)
-    except InvalidId:
-        print('[get_tiff] Invalid ObjectId')
-        return json.dumps({})
-
-    h = g_db.open(db, col)
-    query = {'_id': _id, 'tiff':{'$exists':True}}
-    fields = {'tiff': 1, '_id': 0}
-    res = h.load(query, fields, getarrays=True)
-
-    if res is None: return json.dumps({})
-    data = res['tiff']['data']
-    res['tiff']['data'] = data.tolist()
-    return json.dumps(res['tiff'])
 
 @app.route('/')
 def start():

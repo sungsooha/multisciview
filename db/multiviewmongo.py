@@ -61,6 +61,10 @@ class MultiViewMongo(object):
             self.collection = self.db[self.collection_name]
             self.fs = gridfs.GridFS(self.db, 'fs')
             print("Open DB({}).COL({}) (FS:{})".format(self.db_name, self.collection_name, self.fs_name))
+            return True
+        else:
+            print("Failed to open DB({}).COL({}) (FS:{})".format(self.db_name, self.collection_name, self.fs_name))
+            return False
 
     def _close(self):
         if not self.external_connection:

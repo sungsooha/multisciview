@@ -3820,10 +3820,10 @@ function get_syncer_connect(wdir, db, col) {
     };
 }
 
-function set_sync_info(id, processed, total) {
+function set_sync_info(status, id, processed, total) {
     return {
         type: "SET_SYNC_INFO",
-        payload: { id: id, processed: processed, total: total }
+        payload: { status: status, id: id, processed: processed, total: total }
     };
 }
 
@@ -4000,6 +4000,7 @@ function close_message() {
     };
 }
 
+// to be deleted
 function update_db_info(db, col) {
     return {
         type: "UPDATE_DB_INFO",
@@ -22712,6 +22713,12 @@ var INIT_STATE = {
     dbName: null,
     colName: null,
 
+    isMonitoring: false,
+    isSyncing: false,
+    syncerID: null,
+    syncTotal: 0,
+    syncProcessed: 0,
+
     // file watcher
     wID: null,
     isConnected: false,
@@ -22721,10 +22728,6 @@ var INIT_STATE = {
     //wNodeList: [['N0', {name: '/root', path: '/root', children: []}]],
     //wNodeMap: new Map([['N0', {name: '/root', path: '/root', children: []}]]),
 
-    // file syncer
-    isSyncing: false,
-    syncTotal: 0,
-    syncProcessed: 0,
 
     // temporal message
     message: '',
@@ -22944,20 +22947,17 @@ var get_watcher_monitor = function get_watcher_monitor(state, payload) {
     });
 };
 
-var update_sync_info = function update_sync_info(state, payload) {
-    var data = payload.data,
-        db = payload.db,
-        col = payload.col;
-    var status = data.status,
-        total = data.total,
-        processed = data.processed;
+var set_sync_info = function set_sync_info(state, payload) {
+    var status = payload.status,
+        id = payload.id,
+        processed = payload.processed,
+        total = payload.total;
 
     return _extends({}, state, {
         isSyncing: status,
+        syncerID: id,
         syncTotal: total,
-        syncProcessed: processed,
-        dbName: db,
-        colName: col
+        syncProcessed: processed
     });
 };
 
@@ -23011,6 +23011,8 @@ function dataReducers() {
 
         case "SET_WDIR":
             return set_wdir(state, payload);
+        case "SET_SYNC_INFO":
+            return set_sync_info(state, payload);
 
         case "GET_ROOT_DIR_LIST":
             return get_root_dir_list(state, payload);
@@ -42493,13 +42495,15 @@ exports.locals = {
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react_toolbox_lib_button___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6_react_toolbox_lib_button__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_react_toolbox_lib_list__ = __webpack_require__(/*! react-toolbox/lib/list */ 217);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_react_toolbox_lib_list___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_7_react_toolbox_lib_list__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8__dbview__ = __webpack_require__(/*! ./dbview */ 726);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8__dbview__ = __webpack_require__(/*! ./dbview */ 627);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__index_css__ = __webpack_require__(/*! ./index.css */ 66);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__index_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_9__index_css__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_10__utils__ = __webpack_require__(/*! ../../utils */ 24);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_11_react_multiview_lib_utils__ = __webpack_require__(/*! react-multiview/lib/utils */ 10);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__ = __webpack_require__(/*! ../../actions/dataActions */ 46);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_13__selectors__ = __webpack_require__(/*! ../../selectors */ 67);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12_lodash_throttle__ = __webpack_require__(/*! lodash.throttle */ 726);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12_lodash_throttle___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_12_lodash_throttle__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__ = __webpack_require__(/*! ../../actions/dataActions */ 46);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_14__selectors__ = __webpack_require__(/*! ../../selectors */ 67);
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -42529,6 +42533,9 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 
 
 
+
+
+var THROTTLE_INTERVAL = 100;
 
 var DataListItem = function DataListItem(props) {
     var id = props.id,
@@ -42577,8 +42584,30 @@ var DataTab = function (_React$Component) {
             if (wdir == null || db == null || col == null) {
                 return;
             }
+
+            var sampleSelected = props.sampleSelected,
+                sampleSelectedCounts = props.sampleSelectedCounts;
+
+
             __WEBPACK_IMPORTED_MODULE_4_axios___default.a.get("/api/db/samplelist", { params: { db: db, col: col } }).then(function (resp) {
-                _this.setState({ sampleList: resp.data });
+                // if the number of samples are different, add samples..
+                var sampleList = resp.data;
+                var samplesToAdd = sampleList.map(function (item) {
+                    var _id = item._id,
+                        count = item.count;
+
+                    var key = "[" + db + "][" + col + "]" + _id;
+                    var idx = sampleSelected.indexOf(key);
+                    if (idx >= 0 && sampleSelectedCounts[idx] != count) {
+                        return _id;
+                    }
+                }).filter(function (d) {
+                    return d != null;
+                });
+                _this.setState({ sampleList: sampleList, db: db, col: col });
+                if (samplesToAdd.length && props.onSampleAdd) {
+                    props.onSampleAdd(db, col, samplesToAdd);
+                }
             }).catch(function (e) {
                 console.log(e);
             });
@@ -42602,61 +42631,15 @@ var DataTab = function (_React$Component) {
             if (_this.props.get_watcher_disconnect) _this.props.get_watcher_disconnect(wdir, db, col);
         };
 
-        _this.handleSyncStart = function () {
-            if (_this.interval) {
-                console.log('Unexpected error! Syncer is already running!');
-                console.log('Maybe restart???');
-                return;
-            }
-
-            var wdir = _this.props.wdir;
-            var _this$state3 = _this.state,
-                db = _this$state3.db,
-                col = _this$state3.col;
-
-            __WEBPACK_IMPORTED_MODULE_4_axios___default.a.get('/api/sync', { params: { wdir: wdir, db: db, col: col } }).then(function (resp) {
-                var data = resp.data;
-                _this.interval = setInterval(_this.updateSyncProgress.bind(_this, wdir, db, col), 3000);
-                _this.props.get_syncer_connect(wdir, db, col);
-            }).catch(function (e) {
-                console.log(e);
-            });
-        };
-
-        _this.updateSyncProgress = function (wdir, db, col) {
-            __WEBPACK_IMPORTED_MODULE_4_axios___default.a.get('/api/sync/progress', { params: { wdir: wdir, db: db, col: col } }).then(function (resp) {
-                var data = resp.data;
-                // need a flag to know if syncing is done or not
-                // if (finished) {
-                //     clearInterval(this.interval);
-                //     this.interval = null
-                // }
-                _this.props.get_sync_info(finished ? null : id, processed, total);
-            }).catch(function (e) {
-                console.log(e);
-            });
-        };
-
-        _this.handleSyncStop = function () {
-            var sID = _this.props.sID;
-
-            if (sID == null) return;
-
-            var node = _this.getNode();
-            __WEBPACK_IMPORTED_MODULE_4_axios___default.a.get('/api/sync/stop', { params: { id: sID } }).then(function (resp) {
-                if (_this.interval) clearInterval(_this.interval);
-                _this.props.set_sync_info(null, 0, 0);
-            }).catch(function (e) {
-                console.log(e);
-            });
-        };
-
         _this.addSamples = function (keyArray) {
-            var _this$state4 = _this.state,
-                sampleList = _this$state4.sampleList,
-                db = _this$state4.db,
-                col = _this$state4.col;
-            var sampleSelected = _this.props.sampleSelected;
+            var _this$state3 = _this.state,
+                sampleList = _this$state3.sampleList,
+                dbState = _this$state3.db,
+                colState = _this$state3.col;
+            var _this$props = _this.props,
+                sampleSelected = _this$props.sampleSelected,
+                dbProp = _this$props.db,
+                colProp = _this$props.col;
 
 
             var samplesToAdd = keyArray.map(function (key) {
@@ -42664,14 +42647,14 @@ var DataTab = function (_React$Component) {
                     _id = _sampleList$key._id,
                     count = _sampleList$key.count;
 
-                var name = "[" + db + "][" + col + "]" + _id;
+                var name = "[" + dbState + "][" + colState + "]" + _id;
                 if (sampleSelected.indexOf(name) === -1) return _id;
             }).filter(function (d) {
                 return d != null;
             });
 
             if (samplesToAdd.length && _this.props.onSampleAdd) {
-                _this.props.onSampleAdd(db, col, samplesToAdd);
+                _this.props.onSampleAdd(dbState, colState, samplesToAdd);
             }
         };
 
@@ -42701,12 +42684,12 @@ var DataTab = function (_React$Component) {
         };
 
         _this.renderSelectedSamples = function () {
-            var _this$props = _this.props,
-                sampleSelected = _this$props.sampleSelected,
-                sampleSelectedCounts = _this$props.sampleSelectedCounts,
-                sampleColors = _this$props.sampleColors,
-                onColorChange = _this$props.onColorChange,
-                onSampleDel = _this$props.onSampleDel;
+            var _this$props2 = _this.props,
+                sampleSelected = _this$props2.sampleSelected,
+                sampleSelectedCounts = _this$props2.sampleSelectedCounts,
+                sampleColors = _this$props2.sampleColors,
+                onColorChange = _this$props2.onColorChange,
+                onSampleDel = _this$props2.onSampleDel;
 
             var opacity = 0.5;
 
@@ -42743,15 +42726,17 @@ var DataTab = function (_React$Component) {
                 width: '65%',
                 marginRight: '10px'
             };
-            var _this$state5 = _this.state,
-                db = _this$state5.db,
-                col = _this$state5.col,
-                sampleList = _this$state5.sampleList;
-            var _this$props2 = _this.props,
-                height = _this$props2.height,
-                sampleSelected = _this$props2.sampleSelected;
+            var _this$state4 = _this.state,
+                sampleList = _this$state4.sampleList,
+                dbState = _this$state4.db,
+                colState = _this$state4.col;
+            var _this$props3 = _this.props,
+                height = _this$props3.height,
+                sampleSelected = _this$props3.sampleSelected,
+                dbProp = _this$props3.db,
+                colProp = _this$props3.col;
 
-            var ListHeight = height - 200;
+            var ListHeight = height - 300;
 
             var samples = {};
             var local_selected = sampleList.map(function (sample, idx) {
@@ -42760,7 +42745,7 @@ var DataTab = function (_React$Component) {
 
                 samples[idx] = "[" + count + "] " + _id;
 
-                var key = "[" + db + "][" + col + "]" + _id;
+                var key = "[" + dbState + "][" + colState + "]" + _id;
                 if (sampleSelected.indexOf(key) >= 0) return idx;
             }).filter(function (d) {
                 return d != null;
@@ -42825,13 +42810,24 @@ var DataTab = function (_React$Component) {
         };
 
         _this.renderDBView = function () {
-            var _this$props3 = _this.props,
-                wdir = _this$props3.wdir,
-                db = _this$props3.db,
-                col = _this$props3.col,
-                isConnected = _this$props3.isConnected,
-                set_working_directory = _this$props3.set_working_directory;
+            var _this$props4 = _this.props,
+                wdir = _this$props4.wdir,
+                db = _this$props4.db,
+                col = _this$props4.col,
+                isSyncing = _this$props4.isSyncing,
+                syncerID = _this$props4.syncerID,
+                syncTotal = _this$props4.syncTotal,
+                syncProcessed = _this$props4.syncProcessed,
+                isMonitoring = _this$props4.isMonitoring,
+                isConnected = _this$props4.isConnected,
+                set_working_directory = _this$props4.set_working_directory,
+                set_sync_info = _this$props4.set_sync_info;
 
+            var divStyle = {
+                display: 'inline-block',
+                width: '50%',
+                paddingRight: '10px'
+            };
             return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
                 "div",
                 { className: __WEBPACK_IMPORTED_MODULE_9__index_css___default.a.tabDiv },
@@ -42842,19 +42838,25 @@ var DataTab = function (_React$Component) {
                     inputLabel: "Selected directory",
                     dialogTitle: "Select a working directory",
                     updateWorkDir: set_working_directory,
-                    disabled: isConnected
+                    disabled: false,
+                    isSyncing: isSyncing,
+                    syncerID: syncerID,
+                    syncTotal: syncTotal,
+                    syncProcessed: syncProcessed,
+                    updateSyncInfo: set_sync_info,
+                    isMonitoring: isMonitoring
                 })
             );
         };
 
         _this.state = {
             sampleList: [],
-
-            id: null,
-            total: 0
+            db: null,
+            col: null
         };
 
         _this.q_sample = null;
+        _this.asyncUpdateSampleList = __WEBPACK_IMPORTED_MODULE_12_lodash_throttle___default()(_this.asyncUpdateSampleList, THROTTLE_INTERVAL, { 'leading': true, 'trailing': true });
 
         // interval id to get progress of a syncer
         _this.interval = null;
@@ -42865,25 +42867,11 @@ var DataTab = function (_React$Component) {
         key: "componentDidMount",
         value: function componentDidMount() {
             this.asyncUpdateSampleList();
-
-            // const {sID} = this.props;
-            // if (this.interval == null && sID != null) {
-            //     this.updateSyncProgress(sID);
-            //     this.interval = setInterval(this.updateSyncProgress.bind(this, sID), 3000);
-            // } else if (this.interval) {
-            //     clearInterval(this.interval);
-            // }        
         }
     }, {
         key: "componentWillReceiveProps",
         value: function componentWillReceiveProps(nextProps) {
             this.asyncUpdateSampleList(nextProps);
-            // if there are updates by wacher, need to refresh db information
-            // const { watcherFlag, db, col, set_watcher_update_flag } = nextProps;
-            // if (watcherFlag && set_watcher_update_flag) {
-            //     set_watcher_update_flag(false);
-            //     this.asyncUpdateDBInfo()
-            // }
         }
     }, {
         key: "componentWillUnmount",
@@ -42899,17 +42887,6 @@ var DataTab = function (_React$Component) {
 
         // end of watcher --------------------------------------------------------
 
-        // syncer --------------------------------------------------------------
-
-        // end of watcher ----------------------------------------------------------------
-
-
-        // db -------------------------------------------------------------------
-        // end of db ------------------------------------------------------------
-
-        // samples --------------------------------------------------------------
-
-        // end of samples -------------------------------------------------------
 
     }, {
         key: "render",
@@ -42928,13 +42905,20 @@ var DataTab = function (_React$Component) {
 
 function mapStateToProps(state) {
     return {
-        sampleSelected: Object(__WEBPACK_IMPORTED_MODULE_13__selectors__["i" /* getSelectedSamples */])(state),
-        sampleSelectedCounts: Object(__WEBPACK_IMPORTED_MODULE_13__selectors__["j" /* getSelectedSamplesCounts */])(state),
+        sampleSelected: Object(__WEBPACK_IMPORTED_MODULE_14__selectors__["i" /* getSelectedSamples */])(state),
+        sampleSelectedCounts: Object(__WEBPACK_IMPORTED_MODULE_14__selectors__["j" /* getSelectedSamplesCounts */])(state),
         sampleColors: state.data.sampleColors,
 
         wdir: state.data.wdir,
         db: state.data.dbName,
         col: state.data.colName,
+
+        isSyncing: state.data.isSyncing,
+        syncerID: state.data.syncerID,
+        syncTotal: state.data.syncTotal,
+        syncProcessed: state.data.syncProcessed,
+
+        isMonitoring: state.data.isMonitoring,
 
         isConnected: state.data.isConnected,
 
@@ -42948,25 +42932,489 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_3_redux__["b" /* bindActionCreators */])({
-        //onUpdateDB: update_db_info,
-        onSampleAdd: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["k" /* get_data */],
-        onSampleDel: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["i" /* del_data */],
-        onColorChange: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["g" /* changeSelectedSampleColors */],
+        onSampleAdd: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["k" /* get_data */],
+        onSampleDel: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["i" /* del_data */],
+        onColorChange: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["g" /* changeSelectedSampleColors */],
 
-        // for watcher view
-        set_working_directory: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["s" /* set_working_directory */],
+        set_working_directory: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["s" /* set_working_directory */],
+        set_sync_info: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["q" /* set_sync_info */],
 
-        get_watcher_connect: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["m" /* get_watcher_connect */],
-        get_watcher_disconnect: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["n" /* get_watcher_disconnect */],
-        set_watcher_update_flag: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["r" /* set_watcher_update_flag */],
-        set_sync_info: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["q" /* set_sync_info */]
+        get_watcher_connect: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["m" /* get_watcher_connect */],
+        get_watcher_disconnect: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["n" /* get_watcher_disconnect */],
+        set_watcher_update_flag: __WEBPACK_IMPORTED_MODULE_13__actions_dataActions__["r" /* set_watcher_update_flag */]
+
     }, dispatch);
 }
 
 /* harmony default export */ __webpack_exports__["a"] = (Object(__WEBPACK_IMPORTED_MODULE_2_react_redux__["b" /* connect */])(mapStateToProps, mapDispatchToProps)(DataTab));
 
 /***/ }),
-/* 627 */,
+/* 627 */
+/*!********************************************!*\
+  !*** ./app/src/views/components/dbview.js ***!
+  \********************************************/
+/*! exports provided: default */
+/*! exports used: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react__ = __webpack_require__(/*! react */ 0);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_react__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_axios__ = __webpack_require__(/*! axios */ 105);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_axios___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_axios__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react_toolbox__ = __webpack_require__(/*! react-toolbox */ 59);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react_toolbox___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react_toolbox_lib_button__ = __webpack_require__(/*! react-toolbox/lib/button */ 15);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react_toolbox_lib_button___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_3_react_toolbox_lib_button__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_rt_treeview__ = __webpack_require__(/*! rt-treeview */ 628);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_rt_treeview___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_4_rt_treeview__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_lodash_throttle__ = __webpack_require__(/*! lodash.throttle */ 726);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_lodash_throttle___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_lodash_throttle__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__dialog_css__ = __webpack_require__(/*! ./dialog.css */ 637);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__dialog_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6__dialog_css__);
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+
+
+
+
+
+
+
+
+
+
+var SYNC_PROGRESS_INTERVAL = 5000;
+var THROTTLE_INTERVAL = 100;
+
+var DBView = function (_React$Component) {
+    _inherits(DBView, _React$Component);
+
+    function DBView() {
+        _classCallCheck(this, DBView);
+
+        var _this = _possibleConstructorReturn(this, (DBView.__proto__ || Object.getPrototypeOf(DBView)).call(this));
+
+        _this.asyncCreateDB = function (wdir, db, col) {
+            if (wdir == null || db == null || col == null || db.length == 0 || col.length == 0) {
+                console.log('todo: show message - invalid arguments for DB creation');
+                return;
+            }
+            __WEBPACK_IMPORTED_MODULE_1_axios___default.a.get('/api/db/create', { params: { wdir: wdir, db: db, col: col } }).then(function (resp) {
+                var status = resp.data.status;
+
+                if (status) {
+                    _this.handleNodeSelect(null, { path: wdir, db: [db, col] });
+                } else {
+                    console.log('todo: show message - fail to update db');
+                }
+                _this.setState({ newDBName: 'Type_new_name', newColName: 'Type_new_name' });
+            }).catch(function (e) {
+                console.log(e);
+            });
+        };
+
+        _this.asyncSyncer = function (mode, wdir, syncerID) {
+            __WEBPACK_IMPORTED_MODULE_1_axios___default.a.get('/api/syncer', { params: { mode: mode, wdir: wdir, syncerID: syncerID } }).then(function (resp) {
+                var data = resp.data;
+                if (data.status) {
+                    var status = data.status,
+                        id = data.id,
+                        total = data.total,
+                        processed = data.processed,
+                        completed = data.completed;
+                    // set interval to track process ...
+
+                    if (id != null && !completed && status) {
+                        if (id == syncerID) {
+                            if (_this.syncInterval == null) _this.syncInterval = setInterval(_this.asyncSyncer.bind(_this, 'PROGRESS', wdir, id), SYNC_PROGRESS_INTERVAL);
+                        } else {
+                            if (_this.syncInterval) clearInterval(_this.syncInterval);
+                            _this.syncInterval = setInterval(_this.asyncSyncer.bind(_this, 'PROGRESS', wdir, id), SYNC_PROGRESS_INTERVAL);
+                        }
+                    } else {
+                        if (_this.syncInterval) clearInterval(_this.syncInterval);
+                        _this.syncInterval = null;
+                    }
+                    if (_this.props.updateSyncInfo) {
+                        _this.props.updateSyncInfo(id != null, id, processed, total);
+                    }
+                } else {
+                    console.log('todo: show error message - ', data.message);
+                    if (_this.syncInterval) clearInterval(_this.syncInterval);
+                    _this.syncInterval = null;
+
+                    if (_this.props.updateSyncInfo) {
+                        _this.props.updateSyncInfo(false, null, 0, 0);
+                    }
+                }
+            }).catch(function (e) {
+                console.log(e);
+            });
+        };
+
+        _this.handleToggleWithUpdate = function () {
+            var isOpen = !_this.state.isOpen;
+            if (isOpen) __WEBPACK_IMPORTED_MODULE_1_axios___default.a.get('/api/db/fsmap').then(function (resp) {
+                _this.setState({ wNodeMap: new Map(resp.data), isOpen: isOpen });
+            }).catch(function (e) {
+                console.log(e);
+            });else _this.setState({ isOpen: isOpen });
+        };
+
+        _this.handleToggle = function () {
+            var flag = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+            var event = arguments[1];
+
+            if (flag) {
+                var _this$props = _this.props,
+                    wdir = _this$props.wdir,
+                    db = _this$props.db,
+                    col = _this$props.col;
+
+                _this.asyncCreateDB(wdir, db, col);
+            }
+            _this.setState({ isOpen: !_this.state.isOpen });
+        };
+
+        _this.handleNodeSelect = function (nodeKey, node) {
+            if (_this.props.updateWorkDir) {
+                _this.props.updateWorkDir(node.path, node.db);
+            }
+        };
+
+        _this.handleCreateDB = function () {
+            var wdir = _this.props.wdir;
+            var _this$state = _this.state,
+                newDBName = _this$state.newDBName,
+                newColName = _this$state.newColName;
+
+            if (wdir == null || newDBName.length == 0 || newColName.length == 0) {
+                console.log('todo: show message - invalid arguments for DB creation');
+                return;
+            }
+            _this.asyncCreateDB(wdir, newDBName, newColName);
+        };
+
+        _this.handleToggleSync = function () {
+            var _this$props2 = _this.props,
+                wdir = _this$props2.wdir,
+                isSyncing = _this$props2.isSyncing,
+                syncerID = _this$props2.syncerID;
+
+            var mode = isSyncing ? "STOP" : "START";
+            _this.asyncSyncer(mode, wdir, syncerID);
+        };
+
+        _this.renderDatabaseView = function () {
+            var wNodeMap = _this.state.wNodeMap;
+
+
+            var dbmap = {};
+            wNodeMap.forEach(function (value, key) {
+                if (value.db != null) {
+                    var db = value.db;
+                    var dbKey = db[0] + '_' + db[1];
+                    if (!dbmap.hasOwnProperty(dbKey)) {
+                        dbmap[dbKey] = {
+                            key: dbKey,
+                            name: db[1],
+                            parent: db[0],
+                            children: []
+                        };
+                        if (!dbmap.hasOwnProperty(db[0])) {
+                            dbmap[db[0]] = {
+                                key: db[0],
+                                name: db[0],
+                                parent: null,
+                                children: [dbKey]
+                            };
+                        } else {
+                            dbmap[db[0]]['children'].push(dbKey);
+                        }
+                    }
+                }
+            });
+
+            var dbMap = new Map(Object.keys(dbmap).map(function (key) {
+                return [key, dbmap[key]];
+            }));
+
+            var divStyle = {
+                display: 'inline-block',
+                width: '50%',
+                paddingRight: '10px'
+            };
+            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                'div',
+                null,
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "Selected DB Name",
+                        value: _this.state.newDBName,
+                        onChange: function onChange(value) {
+                            return _this.setState({ newDBName: value.replace(/ /g, "_") });
+                        }
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "Selected DB Name",
+                        value: _this.state.newColName,
+                        onChange: function onChange(value) {
+                            return _this.setState({ newColName: value.replace(/ /g, "_") });
+                        }
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_4_rt_treeview__["TreeView"], {
+                    nodes: dbMap,
+                    search: false,
+                    onNodeSelect: function onNodeSelect(nodeKey, node) {
+                        if (node.parent != null) _this.setState({
+                            newDBName: node.parent,
+                            newColName: node.name });else _this.setState({ newDBName: node.name });
+                    },
+                    size: 'xs'
+                })
+            );
+        };
+
+        _this.renderDirectoryView = function () {
+            var wNodeMap = _this.state.wNodeMap;
+            var _this$props3 = _this.props,
+                wdir = _this$props3.wdir,
+                db = _this$props3.db,
+                col = _this$props3.col;
+
+
+            var divStyle = {
+                display: 'inline-block',
+                width: '50%',
+                paddingRight: '10px'
+            };
+
+            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                'div',
+                null,
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "Selected DB Name",
+                        value: db || "Undefined",
+                        readOnly: true
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "Selected DB Name",
+                        value: col || "Undefined",
+                        readOnly: true
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_4_rt_treeview__["TreeView"], {
+                    nodes: wNodeMap,
+                    search: true,
+                    onNodeSelect: _this.handleNodeSelect,
+                    size: 'xs'
+                })
+            );
+        };
+
+        _this.renderSelectedDB = function (style) {
+            var _this$props4 = _this.props,
+                wdir = _this$props4.wdir,
+                db = _this$props4.db,
+                col = _this$props4.col;
+
+            var divStyle = {
+                display: 'inline-block',
+                width: '50%',
+                paddingRight: '10px'
+            };
+            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                'div',
+                { style: style },
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "DB Name",
+                        value: db || _this.state.newDBName,
+                        onChange: function onChange(value) {
+                            return _this.setState({ newDBName: value.replace(/ /g, "_") });
+                        },
+                        readOnly: true
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                        label: "Collection Name",
+                        value: col || _this.state.newColName,
+                        onChange: function onChange(value) {
+                            return _this.setState({ newColName: value.replace(/ /g, "_") });
+                        },
+                        readOnly: true
+                    })
+                )
+            );
+        };
+
+        _this.renderOptions = function (style) {
+            var _this$props5 = _this.props,
+                isSyncing = _this$props5.isSyncing,
+                syncTotal = _this$props5.syncTotal,
+                syncProcessed = _this$props5.syncProcessed;
+
+            var divStyle = {
+                display: 'inline-block',
+                width: '30%',
+                paddingRight: '10px'
+            };
+
+            var syncLabel = isSyncing ? "SYNC.STOP " : "SYNC.START";
+            var progress = syncTotal ? Math.trunc(syncProcessed / syncTotal * 100) : 0;
+            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                'div',
+                { style: style },
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox_lib_button__["Button"], {
+                        primary: !isSyncing,
+                        accent: isSyncing,
+                        label: syncLabel,
+                        onClick: _this.handleToggleSync
+                    })
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: divStyle },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox_lib_button__["Button"], { flat: true, primary: true, label: "MONITOR" })
+                ),
+                isSyncing && __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    'div',
+                    { style: _extends({}, divStyle, { width: '30%', paddingRight: '0px' }) },
+                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                        'span',
+                        { style: { color: 'red' } },
+                        progress + '%'
+                    )
+                )
+            );
+        };
+
+        _this.state = {
+            wNodeMap: null,
+            isOpen: false,
+
+            isOpenOptionDialog: false,
+            optionAction: null,
+            optionTitle: '',
+            optionMessage: '',
+
+            newDBName: 'Type_new_name',
+            newColName: 'Type_new_name'
+        };
+
+        _this.syncInterval = null;
+        _this.asyncSyncer = __WEBPACK_IMPORTED_MODULE_5_lodash_throttle___default()(_this.asyncSyncer, THROTTLE_INTERVAL, { 'leading': true, 'trailing': true });
+        return _this;
+    }
+
+    _createClass(DBView, [{
+        key: 'componentDidMount',
+        value: function componentDidMount() {
+            var _props = this.props,
+                wdir = _props.wdir,
+                isSyncing = _props.isSyncing,
+                syncerID = _props.syncerID;
+
+            if (isSyncing) {
+                this.asyncSyncer('PROGRESS', wdir, syncerID);
+            }
+        }
+    }, {
+        key: 'componentWillUnmount',
+        value: function componentWillUnmount() {
+            if (this.syncInterval) clearInterval(this.syncInterval);
+            this.syncInterval = null;
+        }
+    }, {
+        key: 'render',
+        value: function render() {
+            var wNodeMap = this.state.wNodeMap;
+            var _props2 = this.props,
+                wdir = _props2.wdir,
+                db = _props2.db,
+                col = _props2.col;
+
+            var divStyle = {
+                display: 'inline-block',
+                width: '60%',
+                paddingRight: '10px'
+            };
+            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                'div',
+                null,
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Input"], {
+                    label: this.props.inputLabel,
+                    value: wdir || 'Select a directory to retrieve/monitor/sync',
+                    onClick: this.handleToggleWithUpdate,
+                    readOnly: true,
+                    style: { cursor: 'pointer' },
+                    disabled: this.props.disabled,
+                    theme: __WEBPACK_IMPORTED_MODULE_6__dialog_css___default.a
+                }),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    __WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Dialog"],
+                    {
+                        active: this.state.isOpen,
+                        actions: [{ label: "PUSH", onClick: this.handleToggle.bind(this, true) }, { label: "CLOSE", onClick: this.handleToggle.bind(this, false) }],
+                        onEscKeyDown: this.handleToggle.bind(this, false),
+                        onOverlayClick: this.handleToggle.bind(this, false),
+                        title: this.props.dialogTitle ? this.props.dialogTitle : "",
+                        theme: __WEBPACK_IMPORTED_MODULE_6__dialog_css___default.a
+                    },
+                    wNodeMap != null && this.renderDirectoryView()
+                ),
+                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
+                    __WEBPACK_IMPORTED_MODULE_2_react_toolbox__["Dialog"],
+                    {
+                        active: !this.state.isOpen && wdir != null && db == null,
+                        title: "DATABASE",
+                        actions: [{ label: "APPLY", onClick: this.handleCreateDB }]
+                    },
+                    wNodeMap != null && !this.state.isOpen && wdir != null && db == null && this.renderDatabaseView()
+                ),
+                this.renderSelectedDB(divStyle),
+                this.renderOptions(_extends({}, divStyle, { width: '40%', paddingRight: '10px' }))
+            );
+        }
+    }]);
+
+    return DBView;
+}(__WEBPACK_IMPORTED_MODULE_0_react___default.a.Component);
+
+/* harmony default export */ __webpack_exports__["a"] = (DBView);
+
+/***/ }),
 /* 628 */
 /*!***********************************************!*\
   !*** ./node_modules/rt-treeview/lib/index.js ***!
@@ -43773,7 +44221,7 @@ exports = module.exports = __webpack_require__(/*! ../../../../node_modules/css-
 
 
 // module
-exports.push([module.i, "._3ibat2wnJ9tYj6gzi4SGk5 {\n    z-index: 500;\n}\n\n._3V4v68mDWkhvJKd7D3anJm {\n    overflow-y: scroll;\n    color: #000;\n}\n\n._1UKEuM5Y7ZNM3hwil3B0Dc {\n    cursor: pointer;\n}\n\n._2OtTCtbVmVBwVSfJl9Cjk8 {\n    color: #de3226;\n    font-size: 12px;\n    line-height: 20px;\n}", "", {"version":3,"sources":["/Users/scott/Documents/Work/bnl/code/app/react-multiview/app/src/views/components/dialog.css"],"names":[],"mappings":"AAAA;IACI,aAAa;CAChB;;AAED;IACI,mBAAmB;IACnB,YAAY;CACf;;AAED;IACI,gBAAgB;CACnB;;AAED;IACI,eAAe;IACf,gBAAgB;IAChB,kBAAkB;CACrB","file":"dialog.css","sourcesContent":[".wrapper {\n    z-index: 500;\n}\n\n.body {\n    overflow-y: scroll;\n    color: #000;\n}\n\n.input {\n    cursor: pointer;\n}\n\n.error {\n    color: #de3226;\n    font-size: 12px;\n    line-height: 20px;\n}"],"sourceRoot":""}]);
+exports.push([module.i, "._3ibat2wnJ9tYj6gzi4SGk5 {\n    z-index: 500;\n}\n\n._3V4v68mDWkhvJKd7D3anJm {\n    overflow-y: scroll;\n    color: #000;\n}\n\n._1UKEuM5Y7ZNM3hwil3B0Dc {\n    cursor: pointer;\n    padding-bottom: 3px;\n}\n\n._2OtTCtbVmVBwVSfJl9Cjk8 {\n    color: #de3226;\n    font-size: 12px;\n    line-height: 20px;\n}\n\n\n", "", {"version":3,"sources":["/Users/scott/Documents/Work/bnl/code/app/react-multiview/app/src/views/components/dialog.css"],"names":[],"mappings":"AAAA;IACI,aAAa;CAChB;;AAED;IACI,mBAAmB;IACnB,YAAY;CACf;;AAED;IACI,gBAAgB;IAChB,oBAAoB;CACvB;;AAED;IACI,eAAe;IACf,gBAAgB;IAChB,kBAAkB;CACrB","file":"dialog.css","sourcesContent":[".wrapper {\n    z-index: 500;\n}\n\n.body {\n    overflow-y: scroll;\n    color: #000;\n}\n\n.input {\n    cursor: pointer;\n    padding-bottom: 3px;\n}\n\n.error {\n    color: #de3226;\n    font-size: 12px;\n    line-height: 20px;\n}\n\n\n"],"sourceRoot":""}]);
 
 // exports
 exports.locals = {
@@ -57408,294 +57856,454 @@ function mapDispatchToProps(dispatch) {
 /***/ }),
 /* 725 */,
 /* 726 */
-/*!********************************************!*\
-  !*** ./app/src/views/components/dbview.js ***!
-  \********************************************/
-/*! exports provided: default */
+/*!***********************************************!*\
+  !*** ./node_modules/lodash.throttle/index.js ***!
+  \***********************************************/
+/*! dynamic exports provided */
 /*! exports used: default */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react__ = __webpack_require__(/*! react */ 0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_react__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_prop_types__ = __webpack_require__(/*! prop-types */ 1);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_prop_types___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_prop_types__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_axios__ = __webpack_require__(/*! axios */ 105);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_axios___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_2_axios__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react_toolbox__ = __webpack_require__(/*! react-toolbox */ 59);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react_toolbox___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react_toolbox_lib_button__ = __webpack_require__(/*! react-toolbox/lib/button */ 15);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react_toolbox_lib_button___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_4_react_toolbox_lib_button__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_rt_treeview__ = __webpack_require__(/*! rt-treeview */ 628);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_rt_treeview___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_rt_treeview__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__dialog_css__ = __webpack_require__(/*! ./dialog.css */ 637);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__dialog_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6__dialog_css__);
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+/* WEBPACK VAR INJECTION */(function(global) {/**
+ * lodash (Custom Build) <https://lodash.com/>
+ * Build: `lodash modularize exports="npm" -o ./`
+ * Copyright jQuery Foundation and other contributors <https://jquery.org/>
+ * Released under MIT license <https://lodash.com/license>
+ * Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
+ * Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+ */
 
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+/** Used as the `TypeError` message for "Functions" methods. */
+var FUNC_ERROR_TEXT = 'Expected a function';
 
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+/** Used as references for various `Number` constants. */
+var NAN = 0 / 0;
 
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+/** `Object#toString` result references. */
+var symbolTag = '[object Symbol]';
 
+/** Used to match leading and trailing whitespace. */
+var reTrim = /^\s+|\s+$/g;
 
+/** Used to detect bad signed hexadecimal string values. */
+var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
 
+/** Used to detect binary string values. */
+var reIsBinary = /^0b[01]+$/i;
 
+/** Used to detect octal string values. */
+var reIsOctal = /^0o[0-7]+$/i;
 
+/** Built-in method references without a dependency on `root`. */
+var freeParseInt = parseInt;
 
+/** Detect free variable `global` from Node.js. */
+var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
 
+/** Detect free variable `self`. */
+var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
 
+/** Used as a reference to the global object. */
+var root = freeGlobal || freeSelf || Function('return this')();
 
+/** Used for built-in method references. */
+var objectProto = Object.prototype;
 
+/**
+ * Used to resolve the
+ * [`toStringTag`](http://ecma-international.org/ecma-262/7.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objectToString = objectProto.toString;
 
-var DBView = function (_React$Component) {
-    _inherits(DBView, _React$Component);
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeMax = Math.max,
+    nativeMin = Math.min;
 
-    function DBView() {
-        _classCallCheck(this, DBView);
+/**
+ * Gets the timestamp of the number of milliseconds that have elapsed since
+ * the Unix epoch (1 January 1970 00:00:00 UTC).
+ *
+ * @static
+ * @memberOf _
+ * @since 2.4.0
+ * @category Date
+ * @returns {number} Returns the timestamp.
+ * @example
+ *
+ * _.defer(function(stamp) {
+ *   console.log(_.now() - stamp);
+ * }, _.now());
+ * // => Logs the number of milliseconds it took for the deferred invocation.
+ */
+var now = function() {
+  return root.Date.now();
+};
 
-        var _this = _possibleConstructorReturn(this, (DBView.__proto__ || Object.getPrototypeOf(DBView)).call(this));
+/**
+ * Creates a debounced function that delays invoking `func` until after `wait`
+ * milliseconds have elapsed since the last time the debounced function was
+ * invoked. The debounced function comes with a `cancel` method to cancel
+ * delayed `func` invocations and a `flush` method to immediately invoke them.
+ * Provide `options` to indicate whether `func` should be invoked on the
+ * leading and/or trailing edge of the `wait` timeout. The `func` is invoked
+ * with the last arguments provided to the debounced function. Subsequent
+ * calls to the debounced function return the result of the last `func`
+ * invocation.
+ *
+ * **Note:** If `leading` and `trailing` options are `true`, `func` is
+ * invoked on the trailing edge of the timeout only if the debounced function
+ * is invoked more than once during the `wait` timeout.
+ *
+ * If `wait` is `0` and `leading` is `false`, `func` invocation is deferred
+ * until to the next tick, similar to `setTimeout` with a timeout of `0`.
+ *
+ * See [David Corbacho's article](https://css-tricks.com/debouncing-throttling-explained-examples/)
+ * for details over the differences between `_.debounce` and `_.throttle`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Function
+ * @param {Function} func The function to debounce.
+ * @param {number} [wait=0] The number of milliseconds to delay.
+ * @param {Object} [options={}] The options object.
+ * @param {boolean} [options.leading=false]
+ *  Specify invoking on the leading edge of the timeout.
+ * @param {number} [options.maxWait]
+ *  The maximum time `func` is allowed to be delayed before it's invoked.
+ * @param {boolean} [options.trailing=true]
+ *  Specify invoking on the trailing edge of the timeout.
+ * @returns {Function} Returns the new debounced function.
+ * @example
+ *
+ * // Avoid costly calculations while the window size is in flux.
+ * jQuery(window).on('resize', _.debounce(calculateLayout, 150));
+ *
+ * // Invoke `sendMail` when clicked, debouncing subsequent calls.
+ * jQuery(element).on('click', _.debounce(sendMail, 300, {
+ *   'leading': true,
+ *   'trailing': false
+ * }));
+ *
+ * // Ensure `batchLog` is invoked once after 1 second of debounced calls.
+ * var debounced = _.debounce(batchLog, 250, { 'maxWait': 1000 });
+ * var source = new EventSource('/stream');
+ * jQuery(source).on('message', debounced);
+ *
+ * // Cancel the trailing debounced invocation.
+ * jQuery(window).on('popstate', debounced.cancel);
+ */
+function debounce(func, wait, options) {
+  var lastArgs,
+      lastThis,
+      maxWait,
+      result,
+      timerId,
+      lastCallTime,
+      lastInvokeTime = 0,
+      leading = false,
+      maxing = false,
+      trailing = true;
 
-        _this.asyncCreateDB = function (wdir, db, col) {
-            if (wdir == null || db == null || col == null || db.length == 0 || col.length == 0) {
-                console.log('todo: show message - invalid arguments for DB creation');
-                return;
-            }
-            __WEBPACK_IMPORTED_MODULE_2_axios___default.a.get('/api/db/create', { params: { wdir: wdir, db: db, col: col } }).then(function (resp) {
-                var status = resp.data.status;
+  if (typeof func != 'function') {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  wait = toNumber(wait) || 0;
+  if (isObject(options)) {
+    leading = !!options.leading;
+    maxing = 'maxWait' in options;
+    maxWait = maxing ? nativeMax(toNumber(options.maxWait) || 0, wait) : maxWait;
+    trailing = 'trailing' in options ? !!options.trailing : trailing;
+  }
 
-                if (status) {
-                    _this.handleNodeSelect(null, { path: wdir, db: [db, col] });
-                } else {
-                    console.log('todo: show message - fail to update db');
-                }
-                _this.setState({ newDBName: 'Type_new_db_name', newColName: 'Type_new_collection_name' });
-            }).catch(function (e) {
-                console.log(e);
-            });
-        };
+  function invokeFunc(time) {
+    var args = lastArgs,
+        thisArg = lastThis;
 
-        _this.handleToggleWithUpdate = function () {
-            var isOpen = !_this.state.isOpen;
-            if (isOpen) __WEBPACK_IMPORTED_MODULE_2_axios___default.a.get('/api/db/fsmap').then(function (resp) {
-                _this.setState({ wNodeMap: new Map(resp.data), isOpen: isOpen });
-            }).catch(function (e) {
-                console.log(e);
-            });else _this.setState({ isOpen: isOpen });
-        };
+    lastArgs = lastThis = undefined;
+    lastInvokeTime = time;
+    result = func.apply(thisArg, args);
+    return result;
+  }
 
-        _this.handleToggle = function () {
-            var flag = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
-            var event = arguments[1];
+  function leadingEdge(time) {
+    // Reset any `maxWait` timer.
+    lastInvokeTime = time;
+    // Start the timer for the trailing edge.
+    timerId = setTimeout(timerExpired, wait);
+    // Invoke the leading edge.
+    return leading ? invokeFunc(time) : result;
+  }
 
-            if (flag) {
-                var _this$props = _this.props,
-                    wdir = _this$props.wdir,
-                    db = _this$props.db,
-                    col = _this$props.col;
+  function remainingWait(time) {
+    var timeSinceLastCall = time - lastCallTime,
+        timeSinceLastInvoke = time - lastInvokeTime,
+        result = wait - timeSinceLastCall;
 
-                _this.asyncCreateDB(wdir, db, col);
-            }
-            _this.setState({ isOpen: !_this.state.isOpen });
-        };
+    return maxing ? nativeMin(result, maxWait - timeSinceLastInvoke) : result;
+  }
 
-        _this.handleNodeSelect = function (nodeKey, node) {
-            if (_this.props.updateWorkDir) {
-                _this.props.updateWorkDir(node.path, node.db);
-            }
-        };
+  function shouldInvoke(time) {
+    var timeSinceLastCall = time - lastCallTime,
+        timeSinceLastInvoke = time - lastInvokeTime;
 
-        _this.handleCreateDB = function () {
-            var wdir = _this.props.wdir;
-            var _this$state = _this.state,
-                newDBName = _this$state.newDBName,
-                newColName = _this$state.newColName;
+    // Either this is the first call, activity has stopped and we're at the
+    // trailing edge, the system time has gone backwards and we're treating
+    // it as the trailing edge, or we've hit the `maxWait` limit.
+    return (lastCallTime === undefined || (timeSinceLastCall >= wait) ||
+      (timeSinceLastCall < 0) || (maxing && timeSinceLastInvoke >= maxWait));
+  }
 
-            if (wdir == null || newDBName.length == 0 || newColName.length == 0) {
-                console.log('todo: show message - invalid arguments for DB creation');
-                return;
-            }
-            _this.asyncCreateDB(wdir, newDBName, newColName);
-        };
-
-        _this.renderDatabaseView = function () {
-            var wNodeMap = _this.state.wNodeMap;
-
-
-            var dbmap = {};
-            wNodeMap.forEach(function (value, key) {
-                if (value.db != null) {
-                    var db = value.db;
-                    var dbKey = db[0] + '_' + db[1];
-                    if (!dbmap.hasOwnProperty(dbKey)) {
-                        dbmap[dbKey] = {
-                            key: dbKey,
-                            name: db[1],
-                            parent: db[0],
-                            children: []
-                        };
-                        if (!dbmap.hasOwnProperty(db[0])) {
-                            dbmap[db[0]] = {
-                                key: db[0],
-                                name: db[0],
-                                parent: null,
-                                children: [dbKey]
-                            };
-                        } else {
-                            dbmap[db[0]]['children'].push(dbKey);
-                        }
-                    }
-                }
-            });
-
-            var dbMap = new Map(Object.keys(dbmap).map(function (key) {
-                return [key, dbmap[key]];
-            }));
-
-            var divStyle = {
-                display: 'inline-block',
-                width: '50%',
-                paddingRight: '10px'
-            };
-            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                'div',
-                null,
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    'div',
-                    { style: divStyle },
-                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Input"], {
-                        label: "Selected DB Name",
-                        value: _this.state.newDBName,
-                        onChange: function onChange(value) {
-                            return _this.setState({ newDBName: value.replace(/ /g, "_") });
-                        }
-                    })
-                ),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    'div',
-                    { style: divStyle },
-                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Input"], {
-                        label: "Selected DB Name",
-                        value: _this.state.newColName,
-                        onChange: function onChange(value) {
-                            return _this.setState({ newColName: value.replace(/ /g, "_") });
-                        }
-                    })
-                ),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_5_rt_treeview__["TreeView"], {
-                    nodes: dbMap,
-                    search: false,
-                    onNodeSelect: function onNodeSelect(nodeKey, node) {
-                        if (node.parent != null) _this.setState({
-                            newDBName: node.parent,
-                            newColName: node.name });else _this.setState({ newDBName: node.name });
-                    },
-                    size: 'xs'
-                })
-            );
-        };
-
-        _this.state = {
-            wNodeMap: null,
-            isOpen: false,
-
-            isOpenOptionDialog: false,
-            optionAction: null,
-            optionTitle: '',
-            optionMessage: '',
-
-            newDBName: 'Type_new_db_name',
-            newColName: 'Type_new_collection_name'
-        };
-        return _this;
+  function timerExpired() {
+    var time = now();
+    if (shouldInvoke(time)) {
+      return trailingEdge(time);
     }
+    // Restart the timer.
+    timerId = setTimeout(timerExpired, remainingWait(time));
+  }
 
-    _createClass(DBView, [{
-        key: 'render',
-        value: function render() {
-            var _this2 = this;
+  function trailingEdge(time) {
+    timerId = undefined;
 
-            var wNodeMap = this.state.wNodeMap;
-            var _props = this.props,
-                wdir = _props.wdir,
-                db = _props.db,
-                col = _props.col;
+    // Only invoke if we have `lastArgs` which means `func` has been
+    // debounced at least once.
+    if (trailing && lastArgs) {
+      return invokeFunc(time);
+    }
+    lastArgs = lastThis = undefined;
+    return result;
+  }
 
-            var divStyle = {
-                display: 'inline-block',
-                width: '50%',
-                paddingRight: '10px'
-            };
+  function cancel() {
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
+    lastInvokeTime = 0;
+    lastArgs = lastCallTime = lastThis = timerId = undefined;
+  }
 
-            return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                'div',
-                null,
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Input"], {
-                    label: this.props.inputLabel,
-                    value: wdir || 'Select a directory to retrieve/monitor/sync',
-                    onClick: this.handleToggleWithUpdate,
-                    readOnly: true,
-                    style: { cursor: 'pointer' },
-                    disabled: this.props.disabled
-                }),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    __WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Dialog"],
-                    {
-                        active: this.state.isOpen,
-                        actions: [{ label: "PUSH", onClick: this.handleToggle.bind(this, true) }, { label: "CLOSE", onClick: this.handleToggle.bind(this, false) }],
-                        onEscKeyDown: this.handleToggle.bind(this, false),
-                        onOverlayClick: this.handleToggle.bind(this, false),
-                        title: this.props.dialogTitle ? this.props.dialogTitle : "",
-                        theme: __WEBPACK_IMPORTED_MODULE_6__dialog_css___default.a
-                    },
-                    wNodeMap != null && __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_5_rt_treeview__["TreeView"], {
-                        nodes: wNodeMap,
-                        search: true,
-                        onNodeSelect: this.handleNodeSelect,
-                        size: 'xs'
-                    })
-                ),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    __WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Dialog"],
-                    {
-                        active: !this.state.isOpen && wdir != null && db == null,
-                        title: "DATABASE",
-                        actions: [{ label: "APPLY", onClick: this.handleCreateDB }]
-                    },
-                    wNodeMap != null && !this.state.isOpen && wdir != null && db == null && this.renderDatabaseView()
-                ),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    'div',
-                    { style: divStyle },
-                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Input"], {
-                        label: "DB Name",
-                        value: db || this.state.newDBName,
-                        onChange: function onChange(value) {
-                            return _this2.setState({ newDBName: value.replace(/ /g, "_") });
-                        },
-                        readOnly: true
-                    })
-                ),
-                __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
-                    'div',
-                    { style: divStyle },
-                    __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_react_toolbox__["Input"], {
-                        label: "Collection Name",
-                        value: col || this.state.newColName,
-                        onChange: function onChange(value) {
-                            return _this2.setState({ newColName: value.replace(/ /g, "_") });
-                        },
-                        readOnly: true
-                    })
-                )
-            );
-        }
-    }]);
+  function flush() {
+    return timerId === undefined ? result : trailingEdge(now());
+  }
 
-    return DBView;
-}(__WEBPACK_IMPORTED_MODULE_0_react___default.a.Component);
+  function debounced() {
+    var time = now(),
+        isInvoking = shouldInvoke(time);
 
-/* harmony default export */ __webpack_exports__["a"] = (DBView);
+    lastArgs = arguments;
+    lastThis = this;
+    lastCallTime = time;
+
+    if (isInvoking) {
+      if (timerId === undefined) {
+        return leadingEdge(lastCallTime);
+      }
+      if (maxing) {
+        // Handle invocations in a tight loop.
+        timerId = setTimeout(timerExpired, wait);
+        return invokeFunc(lastCallTime);
+      }
+    }
+    if (timerId === undefined) {
+      timerId = setTimeout(timerExpired, wait);
+    }
+    return result;
+  }
+  debounced.cancel = cancel;
+  debounced.flush = flush;
+  return debounced;
+}
+
+/**
+ * Creates a throttled function that only invokes `func` at most once per
+ * every `wait` milliseconds. The throttled function comes with a `cancel`
+ * method to cancel delayed `func` invocations and a `flush` method to
+ * immediately invoke them. Provide `options` to indicate whether `func`
+ * should be invoked on the leading and/or trailing edge of the `wait`
+ * timeout. The `func` is invoked with the last arguments provided to the
+ * throttled function. Subsequent calls to the throttled function return the
+ * result of the last `func` invocation.
+ *
+ * **Note:** If `leading` and `trailing` options are `true`, `func` is
+ * invoked on the trailing edge of the timeout only if the throttled function
+ * is invoked more than once during the `wait` timeout.
+ *
+ * If `wait` is `0` and `leading` is `false`, `func` invocation is deferred
+ * until to the next tick, similar to `setTimeout` with a timeout of `0`.
+ *
+ * See [David Corbacho's article](https://css-tricks.com/debouncing-throttling-explained-examples/)
+ * for details over the differences between `_.throttle` and `_.debounce`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Function
+ * @param {Function} func The function to throttle.
+ * @param {number} [wait=0] The number of milliseconds to throttle invocations to.
+ * @param {Object} [options={}] The options object.
+ * @param {boolean} [options.leading=true]
+ *  Specify invoking on the leading edge of the timeout.
+ * @param {boolean} [options.trailing=true]
+ *  Specify invoking on the trailing edge of the timeout.
+ * @returns {Function} Returns the new throttled function.
+ * @example
+ *
+ * // Avoid excessively updating the position while scrolling.
+ * jQuery(window).on('scroll', _.throttle(updatePosition, 100));
+ *
+ * // Invoke `renewToken` when the click event is fired, but not more than once every 5 minutes.
+ * var throttled = _.throttle(renewToken, 300000, { 'trailing': false });
+ * jQuery(element).on('click', throttled);
+ *
+ * // Cancel the trailing throttled invocation.
+ * jQuery(window).on('popstate', throttled.cancel);
+ */
+function throttle(func, wait, options) {
+  var leading = true,
+      trailing = true;
+
+  if (typeof func != 'function') {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  if (isObject(options)) {
+    leading = 'leading' in options ? !!options.leading : leading;
+    trailing = 'trailing' in options ? !!options.trailing : trailing;
+  }
+  return debounce(func, wait, {
+    'leading': leading,
+    'maxWait': wait,
+    'trailing': trailing
+  });
+}
+
+/**
+ * Checks if `value` is the
+ * [language type](http://www.ecma-international.org/ecma-262/7.0/#sec-ecmascript-language-types)
+ * of `Object`. (e.g. arrays, functions, objects, regexes, `new Number(0)`, and `new String('')`)
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an object, else `false`.
+ * @example
+ *
+ * _.isObject({});
+ * // => true
+ *
+ * _.isObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isObject(_.noop);
+ * // => true
+ *
+ * _.isObject(null);
+ * // => false
+ */
+function isObject(value) {
+  var type = typeof value;
+  return !!value && (type == 'object' || type == 'function');
+}
+
+/**
+ * Checks if `value` is object-like. A value is object-like if it's not `null`
+ * and has a `typeof` result of "object".
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
+ * @example
+ *
+ * _.isObjectLike({});
+ * // => true
+ *
+ * _.isObjectLike([1, 2, 3]);
+ * // => true
+ *
+ * _.isObjectLike(_.noop);
+ * // => false
+ *
+ * _.isObjectLike(null);
+ * // => false
+ */
+function isObjectLike(value) {
+  return !!value && typeof value == 'object';
+}
+
+/**
+ * Checks if `value` is classified as a `Symbol` primitive or object.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a symbol, else `false`.
+ * @example
+ *
+ * _.isSymbol(Symbol.iterator);
+ * // => true
+ *
+ * _.isSymbol('abc');
+ * // => false
+ */
+function isSymbol(value) {
+  return typeof value == 'symbol' ||
+    (isObjectLike(value) && objectToString.call(value) == symbolTag);
+}
+
+/**
+ * Converts `value` to a number.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to process.
+ * @returns {number} Returns the number.
+ * @example
+ *
+ * _.toNumber(3.2);
+ * // => 3.2
+ *
+ * _.toNumber(Number.MIN_VALUE);
+ * // => 5e-324
+ *
+ * _.toNumber(Infinity);
+ * // => Infinity
+ *
+ * _.toNumber('3.2');
+ * // => 3.2
+ */
+function toNumber(value) {
+  if (typeof value == 'number') {
+    return value;
+  }
+  if (isSymbol(value)) {
+    return NAN;
+  }
+  if (isObject(value)) {
+    var other = typeof value.valueOf == 'function' ? value.valueOf() : value;
+    value = isObject(other) ? (other + '') : other;
+  }
+  if (typeof value != 'string') {
+    return value === 0 ? value : +value;
+  }
+  value = value.replace(reTrim, '');
+  var isBinary = reIsBinary.test(value);
+  return (isBinary || reIsOctal.test(value))
+    ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
+    : (reIsBadHex.test(value) ? NAN : +value);
+}
+
+module.exports = throttle;
+
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(/*! ./../webpack/buildin/global.js */ 53)))
 
 /***/ })
 /******/ ]);
