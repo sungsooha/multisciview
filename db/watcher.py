@@ -2,12 +2,15 @@ import os
 import threading
 import time
 from os.path import splitext
+from threading import Thread
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from time import sleep
+
 try:
     from Queue import Queue
 except ImportError:
     from queue import Queue
-
 
 class Handler(FileSystemEventHandler):
     def __init__(self, db, parser, pattern=None):
@@ -56,14 +59,23 @@ class Handler(FileSystemEventHandler):
 
     def start(self):
         # NOTE: need to create new thread every start() call
+        self.stop_flag = False
         self.eventScheduler = threading.Thread(target=self._process_q)
+        #self.eventScheduler.daemon = True
         self.dbManager = threading.Thread(target=self._process_job)
+        #self.dbManager.daemon = True
         self.eventScheduler.start()
         self.dbManager.start()
 
     def stop(self):
         # set flag to exit loop for the two local threads
-        self.stop_flag = True
+        if not self.stop_flag:
+            print('stop handler')
+            self.stop_flag = True
+            while self.eventScheduler.is_alive() or self.dbManager.is_alive():
+                sleep(0.001)
+            print('eventScheduler, dbManager threads are not alive')
+
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith(self.pattern):
@@ -112,6 +124,8 @@ class Handler(FileSystemEventHandler):
         Add a document. If a document having same 'item' value,
         it will update the exist one.
         """
+        if doc is None:
+            return None
         r = self.db.save_doc_one(doc)
         action = 'ADD' if r is None else 'UPDATE'
         print('[doc] {:s}: {:s}'.format(action, doc['item']))
@@ -122,6 +136,8 @@ class Handler(FileSystemEventHandler):
         Add a tiff document. If a document having same 'item' value,
         it will update the exist one.
         """
+        if doc is None:
+            return None
         r = self.db.save_img_one(doc, type)
         action = 'ADD' if r is None else 'UPDATE'
         print('[{:s}] {:s}: {:s}'.format(type, action, doc['item']))
@@ -150,20 +166,16 @@ class Handler(FileSystemEventHandler):
 
     def _process_job(self):
         print('start process job')
-        while True:
-            if self.stop_flag:
-                print("Exiting process job loop")
-                break
-
+        while not self.stop_flag:
             #print('job empty: ', self.jobq.empty())
             if len(self.jobdonelist) and self.jobq_hold_flag:
                 self.jobq_ready_flag = True
-                time.sleep(1)
+                time.sleep(0.001)
                 continue
             self.jobq_ready_flag = False
 
             if self.jobq.empty():
-                time.sleep(1)
+                time.sleep(0.001)
                 continue
 
             job, ts = self.jobq.get()
@@ -173,6 +185,7 @@ class Handler(FileSystemEventHandler):
             event_type = job[1]
             _, ext = os.path.splitext(src_path)
 
+            #print(job)
             res = None
             if event_type == 'created' or event_type == 'modified':
                 if ext == '.xml':
@@ -194,7 +207,7 @@ class Handler(FileSystemEventHandler):
                 self.jobdonelist.append(res)
                 #print('[DEBUG]: add jobdone list: ', res)
 
-            time.sleep(1)
+            time.sleep(0.001)
         print('end process job')
 
     def _process_q(self):
@@ -205,18 +218,15 @@ class Handler(FileSystemEventHandler):
         :   2. if the event exist, and time difference > threashold, pass to other thread (add to job queue)
         """
         print('start process q')
-        while True:
-            if self.stop_flag:
-                print("Exiting process q loop")
-                break
-
+        while not self.stop_flag:
+            #print(self.stop_flag)
             curr_ts = time.time()
             if self.q.empty():
                 # update db (only one job at a time)
                 job = self.check_joblist(curr_ts)
                 if job is not None:
                     self.jobq.put((job, curr_ts))
-                time.sleep(1)
+                time.sleep(0.001)
                 continue
 
             event, ts = self.q.get()
@@ -232,9 +242,88 @@ class Handler(FileSystemEventHandler):
 
             #last_ts = time.time()
 
-            time.sleep(1)
-
+            time.sleep(0.001)
         print('end process q')
+
+# directory path dependent
+class Watcher(object):
+    def __init__(self, wdir, db, parser):
+        self.numUsers = 0
+        self.wdir = wdir
+        self.db = db
+        self.parser = parser
+        self.isRunning = False
+
+        self.eventlist = []
+        self.flag = 0 # 0: idle, 1: used by Watcher, 2: used by flask
+
+        self.handler = Handler(db, parser)
+        self.observer = None
+        self.watcher_thread = None
+
+    def getEventList(self):
+        cp = list(self.eventlist)
+        self.eventlist = []
+        return cp
+
+    def setFlag(self, flag):
+        self.flag = flag
+
+    def incNumUsers(self):
+        self.numUsers += 1
+
+    def decNumUsers(self):
+        self.numUsers -= 1
+
+    def _run_sync(self):
+        for dirpath, dirnames, filenames in os.walk(self.wdir):
+            print(dirpath, filenames)
+
+    def start(self):
+        self.isRunning = True
+        self.handler.start()
+
+        self.observer = Observer()
+        self.observer.schedule(self.handler, os.path.realpath(self.wdir), recursive=True)
+        self.observer.start()
+
+        self.watcher_thread= Thread(target=self._run_watcher)
+        #self.watcher_thread.daemon = True
+        self.watcher_thread.start()
+
+    def _run_watcher(self):
+        print('Start file watcher')
+        # try:
+        while self.isRunning:
+            if self.handler.get_jobdonelist_size() > 0 and self.flag == 0:
+                self.handler.set_jobq_hold_flag(True)
+                self.flag=1
+
+                if not self.handler.get_jobq_ready_flag():
+                    self.flag = 0
+                    sleep(.001)
+                    continue
+
+                self.eventlist = self.eventlist + self.handler.get_jobdonelist()
+                self.handler.set_jobq_hold_flag(False)
+                self.flag = 0
+                #print('[DEBUG] eventlist: ', self.eventlist)
+            sleep(.001)
+        print('end file watcher')
+        # except KeyboardInterrupt:
+        #     self.observer.stop()
+        #self.observer.join()
+
+    def stop(self):
+        print('stop watcher')
+        self.handler.stop()
+
+        if self.isRunning:
+            self.isRunning = False
+            while self.watcher_thread is not None and self.watcher_thread.is_alive():
+                sleep(0.001)
+            print("watcher thread died!")
+            self.observer.stop()
 
 
 

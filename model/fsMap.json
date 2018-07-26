@@ -1,0 +1,136 @@
+{
+  "/Users/scott/Desktop/test2": {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "db": null,
+                    "name": "results",
+                    "parent": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                    "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper/results",
+                    "valid": true
+                  },
+                  {
+                    "children": [],
+                    "db": null,
+                    "name": "thumbnails",
+                    "parent": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                    "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper/thumbnails",
+                    "valid": true
+                  }
+                ],
+                "db": null,
+                "name": "analysis_proper",
+                "parent": "/Users/scott/Desktop/test2/a/a_1",
+                "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                "valid": true
+              },
+              {
+                "children": [],
+                "db": null,
+                "name": "tiff",
+                "parent": "/Users/scott/Desktop/test2/a/a_1",
+                "path": "/Users/scott/Desktop/test2/a/a_1/tiff",
+                "valid": true
+              }
+            ],
+            "db": null,
+            "name": "a_1",
+            "parent": "/Users/scott/Desktop/test2/a",
+            "path": "/Users/scott/Desktop/test2/a/a_1",
+            "valid": true
+          },
+          {
+            "children": [],
+            "db": null,
+            "name": "a_2",
+            "parent": "/Users/scott/Desktop/test2/a",
+            "path": "/Users/scott/Desktop/test2/a/a_2",
+            "valid": true
+          }
+        ],
+        "db": null,
+        "name": "a",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/a",
+        "valid": true
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [],
+                "db": null,
+                "name": "b_1_1",
+                "parent": "/Users/scott/Desktop/test2/b/b_1",
+                "path": "/Users/scott/Desktop/test2/b/b_1/b_1_1",
+                "valid": true
+              },
+              {
+                "children": [],
+                "db": null,
+                "name": "b_1_2",
+                "parent": "/Users/scott/Desktop/test2/b/b_1",
+                "path": "/Users/scott/Desktop/test2/b/b_1/b_1_2",
+                "valid": true
+              }
+            ],
+            "db": null,
+            "name": "b_1",
+            "parent": "/Users/scott/Desktop/test2/b",
+            "path": "/Users/scott/Desktop/test2/b/b_1",
+            "valid": true
+          }
+        ],
+        "db": null,
+        "name": "b",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/b",
+        "valid": true
+      },
+      {
+        "children": [],
+        "db": null,
+        "name": "c",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/c",
+        "valid": true
+      }
+    ],
+    "db": null,
+    "name": "/Users/scott/Desktop/test2",
+    "parent": null,
+    "path": "/Users/scott/Desktop/test2",
+    "valid": true
+  },
+  "/Users/scott/Desktop/test2/c/a": {
+    "children": [],
+    "db": null,
+    "name": "a",
+    "parent": null,
+    "path": "/Users/scott/Desktop/test2/c/a",
+    "valid": false
+  },
+  "/Users/scott/Desktop/test2/c/a/a_1": {
+    "children": [],
+    "db": null,
+    "name": "a_1",
+    "parent": null,
+    "path": "/Users/scott/Desktop/test2/c/a/a_1",
+    "valid": false
+  },
+  "/Users/scott/Desktop/test2/c/a/a_2": {
+    "children": [],
+    "db": null,
+    "name": "a_2",
+    "parent": null,
+    "path": "/Users/scott/Desktop/test2/c/a/a_2",
+    "valid": false
+  }
+}

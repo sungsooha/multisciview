@@ -1,13 +1,16 @@
 MONGODB_CONFIG = {
+    # deprecated
     'ROOT': '/Users/scott/Documents/Work/bnl/MultiView/pyServer/data/saxs/',
+
+    # data directory to monitor (recursively)
+    'DATA_DIR': '/Users/scott/Desktop/test2', # It is safe not to inlcude the last back-slash
+    'FSMAP': './fsmap.json',
 
     # mongo db set-up
     'DB': {
         #'HOST': 'visws.csi.bnl.gov',
         'HOST': 'localhost',
-        'PORT': 27017,
-        'NAME': 'test',
-        'COLLECTION': 'test'
+        'PORT': 27017
     },
 
     # parsing xml file
@@ -32,7 +35,6 @@ MONGODB_CONFIG = {
         'RVAL': 'value', # value
 
         # fields that will be ignored in a protocol
-
         'P_EXCLUDE': [
             'infile',
             'outfile',

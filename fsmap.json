@@ -1,0 +1,156 @@
+{
+  "/Users/scott/Desktop/test2": {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "db": [
+                      "db1",
+                      "col1",
+                      "fs"
+                    ],
+                    "name": "results",
+                    "parent": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                    "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper/results",
+                    "valid": true
+                  },
+                  {
+                    "children": [],
+                    "db": [
+                      "db1",
+                      "col1",
+                      "fs"
+                    ],
+                    "name": "thumbnails",
+                    "parent": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                    "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper/thumbnails",
+                    "valid": true
+                  }
+                ],
+                "db": [
+                  "db1",
+                  "col1",
+                  "fs"
+                ],
+                "name": "analysis_proper",
+                "parent": "/Users/scott/Desktop/test2/a/a_1",
+                "path": "/Users/scott/Desktop/test2/a/a_1/analysis_proper",
+                "valid": true
+              },
+              {
+                "children": [],
+                "db": [
+                  "db1",
+                  "col1",
+                  "fs"
+                ],
+                "name": "tiff",
+                "parent": "/Users/scott/Desktop/test2/a/a_1",
+                "path": "/Users/scott/Desktop/test2/a/a_1/tiff",
+                "valid": true
+              }
+            ],
+            "db": [
+              "db1",
+              "col1",
+              "fs"
+            ],
+            "name": "a_1",
+            "parent": "/Users/scott/Desktop/test2/a",
+            "path": "/Users/scott/Desktop/test2/a/a_1",
+            "valid": true
+          },
+          {
+            "children": [],
+            "db": [
+              "db1",
+              "col1",
+              "fs"
+            ],
+            "name": "a_2",
+            "parent": "/Users/scott/Desktop/test2/a",
+            "path": "/Users/scott/Desktop/test2/a/a_2",
+            "valid": true
+          }
+        ],
+        "db": [
+          "db1",
+          "col1",
+          "fs"
+        ],
+        "name": "a",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/a",
+        "valid": true
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [],
+                "db": [
+                  "db1",
+                  "col2",
+                  "fs"
+                ],
+                "name": "b_1_1",
+                "parent": "/Users/scott/Desktop/test2/b/b_1",
+                "path": "/Users/scott/Desktop/test2/b/b_1/b_1_1",
+                "valid": true
+              },
+              {
+                "children": [],
+                "db": [
+                  "db1",
+                  "col2",
+                  "fs"
+                ],
+                "name": "b_1_2",
+                "parent": "/Users/scott/Desktop/test2/b/b_1",
+                "path": "/Users/scott/Desktop/test2/b/b_1/b_1_2",
+                "valid": true
+              }
+            ],
+            "db": [
+              "db1",
+              "col2",
+              "fs"
+            ],
+            "name": "b_1",
+            "parent": "/Users/scott/Desktop/test2/b",
+            "path": "/Users/scott/Desktop/test2/b/b_1",
+            "valid": true
+          }
+        ],
+        "db": [
+          "db1",
+          "col2",
+          "fs"
+        ],
+        "name": "b",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/b",
+        "valid": true
+      },
+      {
+        "children": [],
+        "db": null,
+        "name": "c",
+        "parent": "/Users/scott/Desktop/test2",
+        "path": "/Users/scott/Desktop/test2/c",
+        "valid": true
+      }
+    ],
+    "db": null,
+    "name": "/Users/scott/Desktop/test2",
+    "parent": null,
+    "path": "/Users/scott/Desktop/test2",
+    "valid": true
+  }
+}

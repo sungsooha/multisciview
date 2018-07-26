@@ -1,0 +1,162 @@
+{
+    "/Users/scott/Desktop/test": {
+        "__db": null,
+        "children": [
+            {
+                "__db": null,
+                "children": [
+                    {
+                        "__db": null,
+                        "children": [
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "results",
+                                "parent": "/Users/scott/Desktop/test/test_a/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_a/analysis_proper/results"
+                            },
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "thumbnails",
+                                "parent": "/Users/scott/Desktop/test/test_a/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_a/analysis_proper/thumbnails"
+                            }
+                        ],
+                        "name": "analysis_proper",
+                        "parent": "/Users/scott/Desktop/test/test_a",
+                        "path": "/Users/scott/Desktop/test/test_a/analysis_proper"
+                    },
+                    {
+                        "__db": null,
+                        "children": [],
+                        "name": "tiff",
+                        "parent": "/Users/scott/Desktop/test/test_a",
+                        "path": "/Users/scott/Desktop/test/test_a/tiff"
+                    }
+                ],
+                "name": "test_a",
+                "parent": "/Users/scott/Desktop/test",
+                "path": "/Users/scott/Desktop/test/test_a"
+            },
+            {
+                "__db": null,
+                "children": [
+                    {
+                        "__db": null,
+                        "children": [
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "results",
+                                "parent": "/Users/scott/Desktop/test/test_b/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_b/analysis_proper/results"
+                            },
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "thumbnails",
+                                "parent": "/Users/scott/Desktop/test/test_b/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_b/analysis_proper/thumbnails"
+                            }
+                        ],
+                        "name": "analysis_proper",
+                        "parent": "/Users/scott/Desktop/test/test_b",
+                        "path": "/Users/scott/Desktop/test/test_b/analysis_proper"
+                    },
+                    {
+                        "__db": null,
+                        "children": [],
+                        "name": "tiff",
+                        "parent": "/Users/scott/Desktop/test/test_b",
+                        "path": "/Users/scott/Desktop/test/test_b/tiff"
+                    }
+                ],
+                "name": "test_b",
+                "parent": "/Users/scott/Desktop/test",
+                "path": "/Users/scott/Desktop/test/test_b"
+            },
+            {
+                "__db": null,
+                "children": [
+                    {
+                        "__db": null,
+                        "children": [
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "results",
+                                "parent": "/Users/scott/Desktop/test/test_c/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_c/analysis_proper/results"
+                            },
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "thumbnails",
+                                "parent": "/Users/scott/Desktop/test/test_c/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_c/analysis_proper/thumbnails"
+                            }
+                        ],
+                        "name": "analysis_proper",
+                        "parent": "/Users/scott/Desktop/test/test_c",
+                        "path": "/Users/scott/Desktop/test/test_c/analysis_proper"
+                    },
+                    {
+                        "__db": null,
+                        "children": [],
+                        "name": "tiff",
+                        "parent": "/Users/scott/Desktop/test/test_c",
+                        "path": "/Users/scott/Desktop/test/test_c/tiff"
+                    }
+                ],
+                "name": "test_c",
+                "parent": "/Users/scott/Desktop/test",
+                "path": "/Users/scott/Desktop/test/test_c"
+            },
+            {
+                "__db": null,
+                "children": [
+                    {
+                        "__db": null,
+                        "children": [
+                            {
+                                "__db": null,
+                                "children": [],
+                                "name": "results",
+                                "parent": "/Users/scott/Desktop/test/test_d/analysis_proper",
+                                "path": "/Users/scott/Desktop/test/test_d/analysis_proper/results"
+                            }
+                        ],
+                        "name": "analysis_proper",
+                        "parent": "/Users/scott/Desktop/test/test_d",
+                        "path": "/Users/scott/Desktop/test/test_d/analysis_proper"
+                    },
+                    {
+                        "__db": null,
+                        "children": [],
+                        "name": "tiff",
+                        "parent": "/Users/scott/Desktop/test/test_d",
+                        "path": "/Users/scott/Desktop/test/test_d/tiff"
+                    }
+                ],
+                "name": "test_d",
+                "parent": "/Users/scott/Desktop/test",
+                "path": "/Users/scott/Desktop/test/test_d"
+            }
+        ],
+        "name": "",
+        "parent": null,
+        "path": "/Users/scott/Desktop/test"
+    },
+    "/path/to/dir": {
+        "__db": [
+            "db",
+            "col",
+            "fs"
+        ],
+        "children": [],
+        "name": "",
+        "parent": null,
+        "path": "/path/to/dir"
+    }
+}

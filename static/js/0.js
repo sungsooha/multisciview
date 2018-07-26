@@ -620,7 +620,7 @@ function flush() {
 function attemptVertx() {
   try {
     var r = require;
-    var vertx = __webpack_require__(/*! vertx */ 726);
+    var vertx = __webpack_require__(/*! vertx */ 725);
     vertxNext = vertx.runOnLoop || vertx.runOnContext;
     return useVertxTimer();
   } catch (e) {
@@ -1672,11 +1672,11 @@ return Promise$1;
 
 //# sourceMappingURL=es6-promise.map
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(/*! ./../../process/browser.js */ 9), __webpack_require__(/*! ./../../webpack/buildin/global.js */ 54)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(/*! ./../../process/browser.js */ 9), __webpack_require__(/*! ./../../webpack/buildin/global.js */ 53)))
 
 /***/ }),
 
-/***/ 726:
+/***/ 725:
 /*!***********************!*\
   !*** vertx (ignored) ***!
   \***********************/
