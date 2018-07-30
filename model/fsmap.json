@@ -3,14 +3,8 @@
     "children": [
       {
         "children": [],
-        "db": [
-          "db1",
-          "col1",
-          "fs"
-        ],
-        "fixed": true,
+        "db": null,
         "inSync": false,
-        "link": null,
         "name": "a",
         "parent": "/Users/scott/Desktop/test3",
         "path": "/Users/scott/Desktop/test3/a",
@@ -21,14 +15,8 @@
         "children": [
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/d/b_1",
             "name": "b_1",
             "parent": "/Users/scott/Desktop/test3/b",
             "path": "/Users/scott/Desktop/test3/b/b_1",
@@ -37,14 +25,8 @@
           },
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/d/b_2",
             "name": "b_2",
             "parent": "/Users/scott/Desktop/test3/b",
             "path": "/Users/scott/Desktop/test3/b/b_2",
@@ -53,14 +35,8 @@
           },
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/d/b_3",
             "name": "b_3",
             "parent": "/Users/scott/Desktop/test3/b",
             "path": "/Users/scott/Desktop/test3/b/b_3",
@@ -68,14 +44,8 @@
             "valid": true
           }
         ],
-        "db": [
-          "db2",
-          "col2",
-          "fs"
-        ],
-        "fixed": true,
+        "db": null,
         "inSync": false,
-        "link": "/Users/scott/Desktop/test3/d",
         "name": "b",
         "parent": "/Users/scott/Desktop/test3",
         "path": "/Users/scott/Desktop/test3/b",
@@ -93,9 +63,7 @@
                       {
                         "children": [],
                         "db": null,
-                        "fixed": false,
                         "inSync": false,
-                        "link": null,
                         "name": "results",
                         "parent": "/Users/scott/Desktop/test3/c/a/a_1/analysis_proper",
                         "path": "/Users/scott/Desktop/test3/c/a/a_1/analysis_proper/results",
@@ -105,9 +73,7 @@
                       {
                         "children": [],
                         "db": null,
-                        "fixed": false,
                         "inSync": false,
-                        "link": null,
                         "name": "thumbnails",
                         "parent": "/Users/scott/Desktop/test3/c/a/a_1/analysis_proper",
                         "path": "/Users/scott/Desktop/test3/c/a/a_1/analysis_proper/thumbnails",
@@ -116,9 +82,7 @@
                       }
                     ],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "analysis_proper",
                     "parent": "/Users/scott/Desktop/test3/c/a/a_1",
                     "path": "/Users/scott/Desktop/test3/c/a/a_1/analysis_proper",
@@ -128,9 +92,7 @@
                   {
                     "children": [],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "tiff",
                     "parent": "/Users/scott/Desktop/test3/c/a/a_1",
                     "path": "/Users/scott/Desktop/test3/c/a/a_1/tiff",
@@ -139,9 +101,7 @@
                   }
                 ],
                 "db": null,
-                "fixed": false,
                 "inSync": false,
-                "link": null,
                 "name": "a_1",
                 "parent": "/Users/scott/Desktop/test3/c/a",
                 "path": "/Users/scott/Desktop/test3/c/a/a_1",
@@ -151,9 +111,7 @@
               {
                 "children": [],
                 "db": null,
-                "fixed": false,
                 "inSync": false,
-                "link": null,
                 "name": "a_2",
                 "parent": "/Users/scott/Desktop/test3/c/a",
                 "path": "/Users/scott/Desktop/test3/c/a/a_2",
@@ -162,9 +120,7 @@
               }
             ],
             "db": null,
-            "fixed": false,
             "inSync": false,
-            "link": null,
             "name": "a",
             "parent": "/Users/scott/Desktop/test3/c",
             "path": "/Users/scott/Desktop/test3/c/a",
@@ -178,9 +134,7 @@
                   {
                     "children": [],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "b_1_1",
                     "parent": "/Users/scott/Desktop/test3/c/b/b_1",
                     "path": "/Users/scott/Desktop/test3/c/b/b_1/b_1_1",
@@ -190,9 +144,7 @@
                   {
                     "children": [],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "b_1_2",
                     "parent": "/Users/scott/Desktop/test3/c/b/b_1",
                     "path": "/Users/scott/Desktop/test3/c/b/b_1/b_1_2",
@@ -201,9 +153,7 @@
                   }
                 ],
                 "db": null,
-                "fixed": false,
                 "inSync": false,
-                "link": null,
                 "name": "b_1",
                 "parent": "/Users/scott/Desktop/test3/c/b",
                 "path": "/Users/scott/Desktop/test3/c/b/b_1",
@@ -212,9 +162,7 @@
               }
             ],
             "db": null,
-            "fixed": false,
             "inSync": false,
-            "link": null,
             "name": "b",
             "parent": "/Users/scott/Desktop/test3/c",
             "path": "/Users/scott/Desktop/test3/c/b",
@@ -224,9 +172,7 @@
           {
             "children": [],
             "db": null,
-            "fixed": false,
             "inSync": false,
-            "link": null,
             "name": "c",
             "parent": "/Users/scott/Desktop/test3/c",
             "path": "/Users/scott/Desktop/test3/c/c",
@@ -240,9 +186,7 @@
                   {
                     "children": [],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "results",
                     "parent": "/Users/scott/Desktop/test3/c/saxs/analysis_proper",
                     "path": "/Users/scott/Desktop/test3/c/saxs/analysis_proper/results",
@@ -252,9 +196,7 @@
                   {
                     "children": [],
                     "db": null,
-                    "fixed": false,
                     "inSync": false,
-                    "link": null,
                     "name": "thumbnails",
                     "parent": "/Users/scott/Desktop/test3/c/saxs/analysis_proper",
                     "path": "/Users/scott/Desktop/test3/c/saxs/analysis_proper/thumbnails",
@@ -263,9 +205,7 @@
                   }
                 ],
                 "db": null,
-                "fixed": false,
                 "inSync": false,
-                "link": null,
                 "name": "analysis_proper",
                 "parent": "/Users/scott/Desktop/test3/c/saxs",
                 "path": "/Users/scott/Desktop/test3/c/saxs/analysis_proper",
@@ -275,9 +215,7 @@
               {
                 "children": [],
                 "db": null,
-                "fixed": false,
                 "inSync": false,
-                "link": null,
                 "name": "tiff",
                 "parent": "/Users/scott/Desktop/test3/c/saxs",
                 "path": "/Users/scott/Desktop/test3/c/saxs/tiff",
@@ -286,9 +224,7 @@
               }
             ],
             "db": null,
-            "fixed": false,
             "inSync": false,
-            "link": null,
             "name": "saxs",
             "parent": "/Users/scott/Desktop/test3/c",
             "path": "/Users/scott/Desktop/test3/c/saxs",
@@ -297,9 +233,7 @@
           }
         ],
         "db": null,
-        "fixed": false,
         "inSync": false,
-        "link": null,
         "name": "c",
         "parent": "/Users/scott/Desktop/test3",
         "path": "/Users/scott/Desktop/test3/c",
@@ -310,14 +244,8 @@
         "children": [
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/b/b_1",
             "name": "b_1",
             "parent": "/Users/scott/Desktop/test3/d",
             "path": "/Users/scott/Desktop/test3/d/b_1",
@@ -326,14 +254,8 @@
           },
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/b/b_2",
             "name": "b_2",
             "parent": "/Users/scott/Desktop/test3/d",
             "path": "/Users/scott/Desktop/test3/d/b_2",
@@ -342,14 +264,8 @@
           },
           {
             "children": [],
-            "db": [
-              "db2",
-              "col2",
-              "fs"
-            ],
-            "fixed": true,
+            "db": null,
             "inSync": false,
-            "link": "/Users/scott/Desktop/test3/b/b_3",
             "name": "b_3",
             "parent": "/Users/scott/Desktop/test3/d",
             "path": "/Users/scott/Desktop/test3/d/b_3",
@@ -357,14 +273,8 @@
             "valid": true
           }
         ],
-        "db": [
-          "db2",
-          "col2",
-          "fs"
-        ],
-        "fixed": true,
+        "db": null,
         "inSync": false,
-        "link": "/Users/scott/Desktop/test3/b",
         "name": "d",
         "parent": "/Users/scott/Desktop/test3",
         "path": "/Users/scott/Desktop/test3/d",
@@ -373,9 +283,7 @@
       }
     ],
     "db": null,
-    "fixed": false,
     "inSync": false,
-    "link": null,
     "name": "/Users/scott/Desktop/test3",
     "parent": null,
     "path": "/Users/scott/Desktop/test3",

@@ -1,9 +1,9 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, Response
 from db.db_config import MONGODB_CONFIG
 from db.parser import Parser
 from model.dbModel import dbModel
 from model.syncModel import syncerGroup
-from model.watcherModel import watcherGroup
+#from model.watcherModel import watcherGroup
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 import json
@@ -22,13 +22,13 @@ g_dbModel = dbModel(
 g_syncerGroup = syncerGroup(
     parser=Parser(MONGODB_CONFIG['XML'])
 )
-g_watcherGroup = watcherGroup(
-    parser=Parser(MONGODB_CONFIG['XML'])
-)
+# g_watcherGroup = watcherGroup(
+#     parser=Parser(MONGODB_CONFIG['XML'])
+# )
 
 
 # ----------------------------------------------------------------------------
-# db view
+# db route
 # ----------------------------------------------------------------------------
 @app.route('/api/db/fsmap', methods=['GET'])
 def get_db_treemap():
@@ -53,7 +53,7 @@ def get_db_drop():
 
 
 # ----------------------------------------------------------------------------
-# syncer view
+# syncer route
 # ----------------------------------------------------------------------------
 def get_syncer_start(wdir):
     if wdir is None:
@@ -138,7 +138,9 @@ def get_syncer():
         })
 
 # ----------------------------------------------------------------------------
-# watcher view
+# watcher route
+# - a single watcher is kept monitoring any changes (ADD/MODIFICATION) as default.
+# - users can turn on/off according to their preference
 # ----------------------------------------------------------------------------
 def get_watcher_connect():
     pass
@@ -153,8 +155,22 @@ def get_watcher_monitor():
 def get_watcher():
     pass
 
+def event_stream():
+    import time
+    while True:
+        #data = time.time()
+        data = {
+            'time': time.time()
+        }
+        print(data)
+        yield "hello world"
+
+@app.route('/stream')
+def stream():
+    return Response(event_stream(), mimetype="text/event-stream")
+
 # ----------------------------------------------------------------------------
-# data view
+# data route
 # ----------------------------------------------------------------------------
 def replace_objid_to_str(doc):
     if not isinstance(doc, dict):
@@ -249,7 +265,7 @@ def finalize():
 
 def main(host, port):
     try:
-        app.run(host=host, port=port)
+        app.run(host=host, port=port, threaded=True)
     except KeyboardInterrupt:
         pass
     finally:
