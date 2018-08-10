@@ -9,100 +9,10 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from queue import Queue
 from db.multiviewmongo import MultiViewMongo
+from model.syncer import Syncer
+from queue import Queue
 
-class Syncer(object):
-    # errors related to syncer
-    CAN_SYNC    = 1 # can sync
-    CANNOT_SYNC = 2 # cannot sync because it is already in syncing
-    NO_PATH     = 3 # cannot sync because the path doesn't exist
-    NO_DB       = 4 # cannot sync because db is not set
-
-    @staticmethod
-    def generate_syncer_id():
-        return str(uuid4())
-
-    def __init__(self, items_to_sync):
-        self.items_to_sync = items_to_sync
-        self.parser = parser
-
-        self.processed = 0
-        self.total = 0
-        self.isRunning = False
-        self.isFinished = False
-        self.t = None
-
-    def start(self):
-        self.isRunning = True
-        self.isFinished = False
-        self.processed = 0
-        self.total = 0
-
-        for item in self.items_to_sync:
-            self.total += len(item['files'])
-
-        self.t = Thread(target=self._process)
-        self.t.start()
-
-    def stop(self):
-        if self.isRunning:
-            self.isRunning = False
-            if self.t is not None:
-                while self.t.is_alive():
-                    sleep(0.001)
-                self.t = None
-
-    def get_stat(self):
-        return self.total, self.processed, self.isFinished
-
-    def get_items_to_sync(self):
-        return self.items_to_sync
-
-    def _process(self):
-        """
-        item = {
-            'path': path to directory,
-            'files': list of filenames in the directory
-            'client': MongoDB client
-        }
-        :return:
-        """
-        for item in self.items_to_sync:
-            #print(self.isRunning, item)
-            if not self.isRunning:
-                break
-
-            path_to_dir = item['path']
-            filenames = item['files']
-            db = item['client']
-
-            for f in filenames:
-
-                if not self.isRunning:
-                    break
-
-                fileExt = os.path.splitext(f)[1]
-                fullpath = os.path.join(path_to_dir, f)
-
-                if fileExt == '.xml':
-                    doc = self.parser.xml_to_doc(fullpath)
-                    db.save_doc_one(doc)
-                elif fileExt == '.tiff':
-                    doc = self.parser.tiff_to_doc(fullpath)
-                    db.save_img_one(doc, 'tiff')
-                elif fileExt == '.jpg':
-                    doc = self.parser.jpg_to_doc(fullpath)
-                    db.save_img_one(doc, 'jpg')
-                else:
-                    print('Unsupported file: ', fullpath)
-                #print('SYNC: ', fullpath)
-
-                self.processed += 1
-
-                if self.processed%100 == 0:
-                    sleep(0.001)
-
-        self.isRunning = False
-        self.isFinished = True
+import datetime
 
 class DataEvent(object):
     """An Event-like class that signals all active clients when a new stream data is available"""
@@ -282,9 +192,6 @@ class DBHandler(object):
         self.client = pymongo.MongoClient(self.db_host, self.db_port)
         self.clientPool = {}
 
-        # syncer pool
-        self.syncerPool = {}
-
     def __del__(self):
         self.client.close()
 
@@ -345,12 +252,24 @@ class DBHandler(object):
                 'name': name,           # name of current directory for display
                 'children': [],         # list of absolute pathes of direct children directories
                 'parent': parent,       # absolute path to direct parent directory
-                'db': None,             # related database (db, collection)
-                'valid': True,          # valid path flag
-                'inSync': False,        # sync lock flag
-                'sep': None,            # separator
-                'fixed': False,         # can modify?
                 'link': None,           # linked path
+
+                # valid path flag
+                # It will turn into False, if the given path doesn't exist by
+                #  comparing with fsmap in the file.
+                'valid': True,          # valid path flag
+
+                # This set to Ture, once a client set the `db` field.
+                # Then, `db` filed can be modified only manually via fsmap file.
+                # Such modification requires to re-run the web server.
+                'db': None,  # related database (db, collection)
+                'fixed': False,         # can modify?
+
+                # used for syncing
+                'file': None,  # sample file name used to determine group name
+                'sep': None,   # separator used to parse group name from the file
+                'group': None, # group name in this folder
+                'last_sync': None, # the last date and time sync is applied
             }
 
         # update for symlink
@@ -360,39 +279,54 @@ class DBHandler(object):
                     fsmap[value['realpath']]['link'] = key
                     value['link'] = fsmap[value['realpath']]['path']
 
-
+        _keys_to_copy = ['valid', 'db', 'fixed', 'file', 'sep', 'group',
+                         'last_sync']
         def __merge_fsmap(dstMap:dict, srcMap:dict):
-            for key, srcItem in srcMap.items():
-                if key in dstMap:
+            for _path, _srcItem in srcMap.items():
+                if _path in dstMap:
                     # Is parent same? yes, it must be same as key is the absolute path.
                     # But children could be different. For example, one might delete/move/add
                     # sub-directories. But, we do not care, here.
-                    dstItem = dstMap[key]
-                    for key in ['db', 'valid', 'inSync', 'sep', 'fixed', 'link']:
-                        dstItem[key] = srcItem[key]
+                    _dstItem = dstMap[_path]
+                    for _k in _keys_to_copy:
+                        _dstItem[_k] = _srcItem[_k]
                 else:
                     # This branch can happen when one delete/move/add subdirectories.
                     # Keep it, so that one can fix it manually in the json file.
-                    srcItem['children'] = []
-                    srcItem['parent'] = None
-                    srcItem['valid'] = False
+                    _srcItem['children'] = []
+                    _srcItem['parent'] = None
+                    _srcItem['valid'] = False
                     #srcItem['inSync'] = False
-                    dstMap[key] = srcItem
+                    dstMap[key] = _srcItem
 
         __merge_fsmap(fsmap, self.fsMap)
         self.fsMap = fsmap
 
     def get_fsmap_as_list(self):
+        """
+        Used to return the lastes file system information.
+        Always, first scan file system itself to detect any changes made in
+        the file system by someone else.
+        """
         with self.fsmap_lock:
+            self._traverse()
             fsmap_list = [[key, value] for key, value in self.fsMap.items() if value['valid']]
         return fsmap_list
 
     def set_fsmap(self, fsmap_list):
+        """Used to set db config by a client"""
         with self.fsmap_lock:
-            for key, value in fsmap_list:
-                if key not in self.fsMap: continue     # filesystem may be updated...
-                if self.fsMap[key]['fixed']: continue  # maybe touched by other clients...
-                if value['db']  is None: continue         # db is not set
+            for path, value in fsmap_list:
+                # path is not found
+                # (can happen when file system is manually changed)
+                if path not in self.fsMap: continue
+
+                # db is already set by other clients, ignore this.
+                # Only administrator can change this manually.
+                if self.fsMap[path]['fixed']: continue
+
+                # check db config a client set
+                if value['db'] is None: continue         # db is not set
                 if len(value['db']) != 3: continue      # must be 3-D array
 
                 new_db = value['db'][0]
@@ -400,144 +334,296 @@ class DBHandler(object):
                 if len(new_db) == 0 or len(new_col) == 0: continue # in-complete setting
                 if new_db == 'null' or new_col == 'null': continue # in-complete setting
 
-                item = self.fsMap[key]
+                # update db config
+                item = self.fsMap[path]
                 item['db'] = [new_db, new_col, 'fs']
                 item['fixed'] = True
 
             self._save()
 
-    def get_sync_samples(self, path, recursive):
-        if path not in self.fsMap: return []
-        if not os.path.exists(path): return []
 
-        sample_files = {}
+
+    # def get_sync_samples(self, path, recursive):
+    #     """
+    #     This is called to initiate syncing operation.
+    #     Args:
+    #         path:
+    #         recursive:
+    #
+    #     Returns:
+    #
+    #     """
+    #     if path not in self.fsMap: return []
+    #     if not os.path.exists(path): return []
+    #
+    #     sample_files = {}
+    #     for dirpath, _, files in os.walk(path, followlinks=True):
+    #         for f in files:
+    #             name, ext = os.path.splitext(f)
+    #             if ext in self.extensions:
+    #                 sample_files[dirpath] = name
+    #                 break
+    #
+    #         if not recursive: break
+    #     return sample_files
+
+    # def set_sync_info(self, info:dict):
+    #     """update `inSync` and `sep` fields in fsmap"""
+    #
+    #     with self.fsmap_lock:
+    #         responses = {}
+    #         for path, sep in info.items():
+    #             resp = {
+    #                 'valid': Syncer.CAN_SYNC
+    #             }
+    #             if path in self.fsMap:
+    #                 item = self.fsMap[path]
+    #                 if item['inSync']:
+    #                     resp['valid'] = Syncer.CANNOT_SYNC
+    #                 elif item['db'] is None or len(item['db']) != 3:
+    #                     resp['valid'] = Syncer.NO_DB
+    #                 else:
+    #                     item['inSync'] = True
+    #                     item['sep'] = sep
+    #             else:
+    #                 resp['valid'] = Syncer.NO_PATH
+    #             responses[path] = resp
+    #
+    #         self._save()
+    #
+    #     return responses
+
+    # def run_syncer(self, resp:dict):
+    #     """run syncer, some information will be added to resp"""
+    #
+    #     files_to_sync = []
+    #     for path, info in resp.items():
+    #         if info['valid']:
+    #             item = {
+    #                 'path': path,
+    #                 'files': [],
+    #                 'client': self.get_client(self.get_db(path))
+    #             }
+    #             for _, _, files in os.walk(path):
+    #                 item['files'] = [f for f in files
+    #                                  if os.path.splitext(f)[1] in self.extensions]
+    #                 break
+    #             files_to_sync.append(item)
+    #             info['total'] = len(item['files'])
+    #         else:
+    #             info['total'] = 0
+    #         info['progressed'] = 0
+    #
+    #     # create syncer
+    #     syncer_id = Syncer.generate_syncer_id()
+    #     #syncer = Syncer(items_to_sync=files_to_sync)
+    #
+    #     # update pool
+    #     #self.syncerPool[syncer_id] = syncer
+    #
+    #     # run syncer
+    #     #syncer.start()
+    #
+    #     return syncer_id, resp
+
+    # def get_client(self, db_collection_fs):
+    #     if db_collection_fs is None or len(db_collection_fs) != 3:
+    #         return None
+    #
+    #     db = db_collection_fs[0]
+    #     col = db_collection_fs[1]
+    #     fs = db_collection_fs[2]
+    #     key = '{}:{}:{}'.format(db, col, fs)
+    #     if key in self.clientPool:
+    #         h = self.clientPool[key]
+    #     else:
+    #         h = MultiViewMongo(
+    #             connection=self.client,
+    #             db_name=db,
+    #             collection_name=col,
+    #             fs_name=fs
+    #         )
+    #         self.clientPool[key] = h
+    #     return h
+
+    # def set_db(self, path, db, col):
+    #     if path not in self.fsMap:
+    #         return False
+    #
+    #     def __recursive_update(key: str, fsmap: dict):
+    #         item = fsmap[key]
+    #         if item['db'] is None: item['db'] = [db, col, 'fs']
+    #         for child in item['children']:
+    #             __recursive_update(child, fsmap)
+    #
+    #     # update db setting recursively
+    #     # If a path is already set before (or maybe by other client),
+    #     # it didn't modify it. Given path may be not set as a client wants.
+    #     with self.fsmap_lock:
+    #         __recursive_update(path, self.fsMap)
+    #         self._save()
+    #
+    #     return True
+
+    # def get_db(self, path):
+    #     db = None
+    #     with self.fsmap_lock:
+    #         if path in self.fsMap:
+    #             db = self.fsMap[path]['db']
+    #     return db
+
+class DBHandlerWithSyncer(DBHandler):
+    """
+    On top of DBHandler, implement syncer handler here.
+
+    The communication between Web Server and a client is through this syncer
+    handler. For the communication, following structured information is used.
+
+    {
+          'path/to/sync': {
+              'status': int, index of one of [RUNNING, QUEUED, COMPLETED, ERROR],
+              'path_name': str, path name to display,
+              'file_name': str, sample file name to determine separator,
+              'group_name': str, group name,
+              'sep': str, separator (keyword),
+              'total': int, the number of files to be synced,
+              'processed': int, the number of files prossessed,
+              'timestamp': date, last time this folder is synced
+          }
+    }
+    """
+
+    def __init__(self, rootDir, fsmapFn, db_host='localhost', db_port=27017):
+        super().__init__(rootDir, fsmapFn, db_host, db_port)
+        self.syncerPool = {}
+
+    def _sync_files(self, path):
+        """Return list of filenames under `path` (not recursive)"""
+        if not os.path.exists(path):
+            return []
+
+        files_to_sync = []
         for dirpath, _, files in os.walk(path, followlinks=True):
             for f in files:
                 name, ext = os.path.splitext(f)
                 if ext in self.extensions:
-                    sample_files[dirpath] = name
-                    break
+                    files_to_sync.append(f)
+            break
 
-            if not recursive: break
-        return sample_files
+        return files_to_sync
 
-    def set_sync_info(self, info:dict):
-        """update `inSync` and `sep` fields in fsmap"""
+    def _sync_file_sample(self, path):
+        """Return a filename under `path' (not recursive)"""
+        files = self._sync_files(path)
+        if len(files):
+            return files[0]
+        return None
 
-        with self.fsmap_lock:
-            responses = {}
-            for path, sep in info.items():
-                resp = {
-                    'valid': Syncer.CAN_SYNC
-                }
-                if path in self.fsMap:
-                    item = self.fsMap[path]
-                    if item['inSync']:
-                        resp['valid'] = Syncer.CANNOT_SYNC
-                    elif item['db'] is None or len(item['db']) != 3:
-                        resp['valid'] = Syncer.NO_DB
-                    else:
-                        item['inSync'] = True
-                        item['sep'] = sep
-                else:
-                    resp['valid'] = Syncer.NO_PATH
-                responses[path] = resp
-
-            self._save()
-
-        return responses
-
-    def run_syncer(self, resp:dict):
-        """run syncer, some information will be added to resp"""
-
-        files_to_sync = []
-        for path, info in resp.items():
-            if info['valid']:
-                item = {
-                    'path': path,
-                    'files': [],
-                    'client': self.get_client(self.get_db(path))
-                }
-                for _, _, files in os.walk(path):
-                    item['files'] = [f for f in files
-                                     if os.path.splitext(f)[1] in self.extensions]
-                    break
-                files_to_sync.append(item)
-                info['total'] = len(item['files'])
-            else:
-                info['total'] = 0
-            info['progressed'] = 0
-
-        # create syncer
-        syncer_id = Syncer.generate_syncer_id()
-        #syncer = Syncer(items_to_sync=files_to_sync)
-
-        # update pool
-        #self.syncerPool[syncer_id] = syncer
-
-        # run syncer
-        #syncer.start()
-
-        return syncer_id, resp
-
-    def get_client(self, db_collection_fs):
-        if db_collection_fs is None or len(db_collection_fs) != 3:
-            return None
-
-        db = db_collection_fs[0]
-        col = db_collection_fs[1]
-        fs = db_collection_fs[2]
-        key = '{}:{}:{}'.format(db, col, fs)
-        if key in self.clientPool:
-            h = self.clientPool[key]
-        else:
-            h = MultiViewMongo(
-                connection=self.client,
-                db_name=db,
-                collection_name=col,
-                fs_name=fs
-            )
-            self.clientPool[key] = h
-        return h
-
-    def set_db(self, path, db, col):
-        if path not in self.fsMap:
-            return False
-
-        def __recursive_update(key: str, fsmap: dict):
-            item = fsmap[key]
-            if item['db'] is None: item['db'] = [db, col, 'fs']
-            for child in item['children']:
-                __recursive_update(child, fsmap)
-
-        # update db setting recursively
-        # If a path is already set before (or maybe by other client),
-        # it didn't modify it. Given path may be not set as a client wants.
-        with self.fsmap_lock:
-            __recursive_update(path, self.fsMap)
-            self._save()
-
-        return True
-
-    def get_db(self, path):
-        db = None
+    def _update_sync_timestamp(self, path, timestamp):
+        """Invoked as upon finishing syncing to update timestamp in fsmap"""
         with self.fsmap_lock:
             if path in self.fsMap:
-                db = self.fsMap[path]['db']
-        return db
+                self.fsMap[path]['last_sync'] = timestamp
+                self._save()
 
+    def _sync_on_finished(self, path, info):
+        """Call back function to update timestamp by a syncer"""
+        dateFormat = "%Y-%m-%d %H:%M:%S"
+        tstamp = datetime.datetime.now().strftime(dateFormat)
+        info['timestamp'] = tstamp
+        info['status'] = 'COMPLETED'
+        self._update_sync_timestamp(path, tstamp)
+        return info
 
-    def get_sample_list(self, db, col):
-        pass
+    def _sync_request(self, path, item):
+        """On request on syncing..."""
+        files_to_sync = self._sync_files(path)
+        h = Syncer(files_to_sync, path, item, self._sync_on_finished)
+        # before starting the syncer, update fsmap
+        with self.fsmap_lock:
+            fs = self.fsMap[path]
+            fs['file'] = item['file_name']
+            fs['sep'] = item['sep']
+            fs['group'] = item['group_name']
+            self._save()
+        h.start()
+        item['total'] = h.get_total()
+        item['processed'] = h.get_processed()
+        item['status'] = 'RUNNING'
 
-    def lock_path_to_sync(self, path):
-        pass
+        self.syncerPool[path] = h
+        return item
 
-    def unlock_path_to_sync(self, path):
-        pass
+    def _sync_running(self, path, item):
+        """syncing monitoring"""
+        if path in self.syncerPool:
+            h = self.syncerPool[path]
+            for k, v in h.get_info().items():
+                item[k] = v
+            if not h.isRunning:
+                del self.syncerPool[path]
+        else:
+            item['status'] = 'COMPLETED'
+        return item
 
+    def _update_info_item(self, path, item:dict):
+        """update sync. information according to the status"""
+        status = item['status']
+        if status == 'INIT' or status == 'COMPLETED':
+            item = self._sync_request(path, item)
+        elif status == 'RUNNING':
+            item = self._sync_running(path, item)
+        else:
+            print('Unknown status: ', status)
+        return item
 
-class DataHandler(DBHandler):
+    def get_sync_info(self, path, recursive):
+        """
+        Parse sync info from fsmap and syncer pool
+        It only read information from them, no lock. (thread safe)
+        """
+        if path not in self.fsMap: return {}
+
+        syncInfo = {}
+        q = Queue()
+        q.put(path)
+
+        while not q.empty():
+            _path = q.get()
+            if _path not in self.fsMap: continue
+
+            _fs = self.fsMap[_path]
+            if _path in self.syncerPool:
+                syncInfo[_path] = self.syncerPool[_path].get_info()
+            else:
+                db = _fs['db']
+                file = _fs['file']
+                if file is None: file = self._sync_file_sample(_path)
+
+                if db is not None and file is not None:
+                    syncInfo[_path] = {
+                        'status': 'INIT',
+                        'path_name': _fs['name'],
+                        'file_name': file,
+                        'group_name': _fs['group'],
+                        'sep': _fs['sep'],
+                        'total': 0,
+                        'processed': 0,
+                        'timestamp': _fs['last_sync']
+                    }
+
+            if recursive:
+                for c_path in _fs['children']:
+                    q.put(c_path)
+
+        return syncInfo
+
+    def update_sync_info(self, syncInfo:dict):
+        for path, info in syncInfo.items():
+            self._update_info_item(path, info)
+        return syncInfo
+
+class DataHandler(DBHandlerWithSyncer):
     """
     DataHandler
     """
@@ -620,7 +706,29 @@ class DataHandler(DBHandler):
 
 
 
-if __name__ == '__main__':
 
-    DIR = '/Users/scott/Desktop/test3'
-    h = FSMapHandler(DIR, './fsmap.json')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,11 +1,27 @@
+"""
+Web Server for MultiSciView
+
+NOTES:
+    1.
+
+author: Sungsoo Ha (sungsooha@bnl.gov)
+"""
+
 import json
 from flask import Flask, Response, request, render_template
 from model.dataModel import DataHandler
 
+
+
 # ----------------------------------------------------------------------------
 # Global variables
 # ----------------------------------------------------------------------------
+# web application
 app = Flask(__name__)
+# data handler including
+# - managing MongoDB
+# - sync files in folders user selected with MongoDB
+# - monitoring folders, updating some events, and broadcasting the results
 Data = DataHandler(rootDir='/Users/scott/Desktop/test3')
 
 
@@ -14,129 +30,150 @@ Data = DataHandler(rootDir='/Users/scott/Desktop/test3')
 # ----------------------------------------------------------------------------
 @app.route('/api/db/fsmap', methods=['POST'])
 def db_treemap():
+    """
+    This is to communicate file system information.
+
+    User will use this route to
+        1. get the latest file system information
+        2. update db field in the file system information
+
+    In case, multiple clients attempt to update the db field for the same
+    folder, ther server will take the first attempt and ignore the others.
+
+    Server will always return the latest file system information with any
+    updates from the clients. This also includes any changes in the file
+    system itself, e.g. creating new folders or deleteing some folders. For
+    this, server will do following operations:
+        1. update fsmap with information a client provided, if any
+        2. scan file system and update fsmap
+
+        Note that thses operations will be serialized with Lock.
+
+    Returns:
+        updated fsmap
+    """
     nodeList = request.get_json()['nodeList']
     if len(nodeList):
         Data.set_fsmap(nodeList)
+
     return json.dumps(Data.get_fsmap_as_list())
 
-@app.route('/api/db/samplelist', methods=['POST'])
-def db_samplelist():
-    db = request.args.get('db')
-    col = request.args.get('col')
-    return json.dumps(Data.get_sample_list(db, col))
+# @app.route('/api/db/samplelist', methods=['POST'])
+# def db_samplelist():
+#     db = request.args.get('db')
+#     col = request.args.get('col')
+#     return json.dumps(Data.get_sample_list(db, col))
 
 # ----------------------------------------------------------------------------
 # syncer route
 # ----------------------------------------------------------------------------
-def get_syncer_start(wdir):
-    if wdir is None:
-        return json.dumps({
-            'status': False,
-            'message': 'Unknown directory to sync.'
-        })
+# def get_syncer_start(wdir):
+#     if wdir is None:
+#         return json.dumps({
+#             'status': False,
+#             'message': 'Unknown directory to sync.'
+#         })
+#
+#     files_to_sync = g_dbModel.get_files_to_sync(wdir)
+#     syncer_id, h = g_syncerGroup.init_syncer(files_to_sync)
+#     h.start()
+#     total, processed, completed = h.get_stat()
+#     return json.dumps({
+#         'status': True,
+#         'id': syncer_id,
+#         'total': total,
+#         'processed': processed,
+#         'completed': completed,
+#         'message': 'Start syncing.'
+#     })
 
-    files_to_sync = g_dbModel.get_files_to_sync(wdir)
-    syncer_id, h = g_syncerGroup.init_syncer(files_to_sync)
-    h.start()
-    total, processed, completed = h.get_stat()
-    return json.dumps({
-        'status': True,
-        'id': syncer_id,
-        'total': total,
-        'processed': processed,
-        'completed': completed,
-        'message': 'Start syncing.'
-    })
+# def get_syncer_stop(syncer_id):
+#     h = g_syncerGroup.get_syncer(syncer_id)
+#
+#     if h is None:
+#         return json.dumps({
+#             'status': False,
+#             'message': 'Failed to find sync handler.'
+#         })
+#
+#     h.stop()
+#     total, processed, completed = h.get_stat()
+#     g_syncerGroup.delete_syncer(syncer_id)
+#     g_dbModel.unlock_files_to_sync(h.get_items_to_sync())
+#     return json.dumps({
+#         'status': True,
+#         'id': None,
+#         'total': total,
+#         'processed': processed,
+#         'completed': completed,
+#         'message': 'Stop syncing.'
+#     })
 
-def get_syncer_stop(syncer_id):
-    h = g_syncerGroup.get_syncer(syncer_id)
+# def get_syncer_progress(syncer_id):
+#     h = g_syncerGroup.get_syncer(syncer_id)
+#     if h is None:
+#         return json.dumps({
+#             'status': False,
+#             'message': 'Failed to find sync handler.'
+#         })
+#
+#     total, processed, completed = h.get_stat()
+#     if completed:
+#         g_syncerGroup.delete_syncer(syncer_id)
+#         g_dbModel.unlock_files_to_sync(h.get_items_to_sync())
+#
+#     return json.dumps({
+#         'status': True,
+#         'id': None if completed else syncer_id,
+#         'total': total,
+#         'processed': processed,
+#         'completed': completed,
+#         'message': 'Stop syncing.'
+#     })
 
-    if h is None:
-        return json.dumps({
-            'status': False,
-            'message': 'Failed to find sync handler.'
-        })
+@app.route('/api/syncer/init', methods=['POST'])
+def syncer_init():
+    """
+    This route is invoked when new directory is selected by clients.
 
-    h.stop()
-    total, processed, completed = h.get_stat()
-    g_syncerGroup.delete_syncer(syncer_id)
-    g_dbModel.unlock_files_to_sync(h.get_items_to_sync())
-    return json.dumps({
-        'status': True,
-        'id': None,
-        'total': total,
-        'processed': processed,
-        'completed': completed,
-        'message': 'Stop syncing.'
-    })
-
-def get_syncer_progress(syncer_id):
-    h = g_syncerGroup.get_syncer(syncer_id)
-    if h is None:
-        return json.dumps({
-            'status': False,
-            'message': 'Failed to find sync handler.'
-        })
-
-    total, processed, completed = h.get_stat()
-    if completed:
-        g_syncerGroup.delete_syncer(syncer_id)
-        g_dbModel.unlock_files_to_sync(h.get_items_to_sync())
-
-    return json.dumps({
-        'status': True,
-        'id': None if completed else syncer_id,
-        'total': total,
-        'processed': processed,
-        'completed': completed,
-        'message': 'Stop syncing.'
-    })
-
-@app.route('/api/syncer/samples', methods=['POST'])
-def syncer_samples():
+    Returns:
+        The server returns sync information related to the selected folder.
+    """
     data = request.get_json()
     wdir = data['wdir']
     recursive = data['recursive']
-    return json.dumps(Data.get_sync_samples(wdir, recursive))
+    return json.dumps(Data.get_sync_info(wdir, recursive))
 
 @app.route('/api/syncer/start', methods=['POST'])
 def syncer_start():
     info = request.get_json()
-    print(info)
+    info = Data.update_sync_info(info)
+    return json.dumps(info)
 
-    # 1. set fsmap for sync
-    resp = Data.set_sync_info(info)
-    print(resp)
-
-    # 2. then, run syncer
-    syncer_id, resp = Data.run_syncer(resp)
-    print(resp)
-
-    # 3. return syncer id and progress information
-
-    return json.dumps({
-        'id': syncer_id,
-        'resp': resp
-    })
+@app.route('/api/syncer/progress', methods=['POST'])
+def syncer_progress():
+    info = request.get_json()
+    info = Data.update_sync_info(info)
+    return json.dumps(info)
 
 
-@app.route('/api/syncer', methods=['GET'])
-def get_syncer():
-    mode = request.args.get('mode')
-    wdir = request.args.get('wdir')
-    syncerID = request.args.get('syncerID')
-
-    if mode == 'START':
-        return get_syncer_start(wdir)
-    elif mode == 'STOP':
-        return get_syncer_stop(syncerID)
-    elif mode == 'PROGRESS':
-        return get_syncer_progress(syncerID)
-    else:
-        return json.dumps({
-            'status': False,
-            'message': 'Unknown mode for sync operation: {}'.format(mode)
-        })
+# @app.route('/api/syncer', methods=['GET'])
+# def get_syncer():
+#     mode = request.args.get('mode')
+#     wdir = request.args.get('wdir')
+#     syncerID = request.args.get('syncerID')
+#
+#     if mode == 'START':
+#         return get_syncer_start(wdir)
+#     elif mode == 'STOP':
+#         return get_syncer_stop(syncerID)
+#     elif mode == 'PROGRESS':
+#         return get_syncer_progress(syncerID)
+#     else:
+#         return json.dumps({
+#             'status': False,
+#             'message': 'Unknown mode for sync operation: {}'.format(mode)
+#         })
 
 # ----------------------------------------------------------------------------
 # stream
