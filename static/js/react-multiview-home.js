@@ -43733,6 +43733,7 @@ var DirTreeView = function (_React$Component) {
             }
 
             __WEBPACK_IMPORTED_MODULE_1_axios___default.a.post('/api/db/fsmap', payload).then(function (resp) {
+                //console.log(resp.data)
                 _this.setState({ nodes: new Map(resp.data), isOpen: isOpen }, function () {
                     if (_this.props.onDirSelect && !isOpen) {
                         _this.props.onDirSelect(_this.state.selectedDir);

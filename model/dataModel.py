@@ -126,45 +126,45 @@ class FSHandler(FileSystemEventHandler):
                 .is_directory: True | False
                 .src_path: path/to/observed/file
         """
-        now = time.time()
         if event.is_directory:
             if event.src_path not in self.skip_dirs:
-                self._dispatch_dir_event(event, now)
+                self._dispatch_dir_event(event)
         else:
             ext = os.path.splitext(event.src_path)[1]
             if ext in self.extensions:
-                self._dispatch_file_event(event, now)
+                self._dispatch_file_event(event)
 
-    def _dispatch_dir_event(self, event, timestamp):
+    def _dispatch_dir_event(self, event):
+
+        print(event)
         event_type = event.event_type
-        if event_type == 'modified':
-            pass
-        elif event_type == 'created':
-            pass
-        elif event_type == 'moved':
-            pass
-        elif event_type == 'deleted':
-            pass
+        src_path = event.src_path
+
+        if event_type in ['created', 'deleted']:
+            self.callback('dir', event_type, src_path, None)
+        elif event_type in ['moved']:
+            self.callback('dir', event_type, src_path, event.dest_path)
         else:
             pass
 
-    def _dispatch_file_event(self, event, timestamp):
+
+    def _dispatch_file_event(self, event):
         event_type = event.event_type
         src_path = os.path.realpath(event.src_path)
 
-        if self.callback is not None:
-            self.callback(event_type, src_path, timestamp)
+        # if self.callback is not None:
+        #     self.callback('file', event_type, src_path)
 
-        if event_type == 'modified':
-            pass
-        elif event_type == 'created':
-            pass
-        elif event_type == 'moved':
-            pass
-        elif event_type == 'deleted':
-            pass
-        else:
-            pass
+        # if event_type == 'modified':
+        #     pass
+        # elif event_type == 'created':
+        #     pass
+        # elif event_type == 'moved':
+        #     pass
+        # elif event_type == 'deleted':
+        #     pass
+        # else:
+        #     pass
 
 class DBHandler(object):
     def __init__(
@@ -191,6 +191,10 @@ class DBHandler(object):
         # Must ensure mongod is running!
         self.client = pymongo.MongoClient(self.db_host, self.db_port)
         self.clientPool = {}
+
+        # streaming queues
+        self.fs_event_q = Queue()
+        self.stream_q = Queue()
 
     def __del__(self):
         self.client.close()
@@ -301,6 +305,33 @@ class DBHandler(object):
 
         __merge_fsmap(fsmap, self.fsMap)
         self.fsMap = fsmap
+
+    def _update_fsmap(self, event_type, src_path, dst_path):
+        """Invoked when filesystem changes (only for directory changes)"""
+        with self.fsmap_lock:
+            if event_type in ['created', 'deleted']:
+                # on create and delete operation, refresh entire fsmap
+                self._traverse()
+                self._save()
+            elif event_type in ['moved'] and dst_path is not None:
+                # moved event includes 'rename' and 'relocate a folder'
+                # 1. keep the information
+                # 2. refresh fsmap
+                # 3. and restore the information
+                cp_key = ['db', 'file', 'fixed', 'group', 'last_sync', 'sep']
+                if src_path in self.fsMap:
+                    prev_item = dict(self.fsMap[src_path])
+                    self._traverse()
+                    if dst_path in self.fsMap:
+                        curr_item = self.fsMap[dst_path]
+                        for k, v in prev_item.items():
+                            if k in cp_key:
+                                curr_item[k] = v
+                    self._save()
+
+    def _add_fs_event(self, what, event_type, src_path, dst_path):
+        """Invoked by observer and syncers"""
+        self.fs_event_q.put((what, event_type, src_path, dst_path))
 
     def get_fsmap_as_list(self):
         """
@@ -497,6 +528,9 @@ class DBHandlerWithSyncer(DBHandler):
         super().__init__(rootDir, fsmapFn, db_host, db_port)
         self.syncerPool = {}
 
+    def __del__(self):
+        super().__del__()
+
     def _sync_files(self, path):
         """Return list of filenames under `path` (not recursive)"""
         if not os.path.exists(path):
@@ -641,8 +675,9 @@ class DataHandler(DBHandlerWithSyncer):
             db_port
         )
 
-        self.fs_event_q = Queue() # event queue in filesystem
-        self.stream_q = Queue()   # streaming data queue
+        # moved to DBHandler
+        #self.fs_event_q = Queue() # event queue in filesystem
+        #self.stream_q = Queue()   # streaming data queue
 
         # watchdog
         self.observer = Observer()
@@ -661,37 +696,43 @@ class DataHandler(DBHandlerWithSyncer):
         self.fs_thread.daemon = True
         self.fs_thread.start()
 
-        # establish MongoDB connection
-        #self.client = pymongo.MongoClient(self.db_host, self.db_port)
-
-
 
     def __del__(self):
         super().__del__()
         self.observer.stop()
         self.observer.join()
-        #self.client.close()
 
-    def _add_fs_event(self, event_type, src_path, timestamp):
-        """Invoked from observer when there are new events in filesystem"""
-        self.fs_event_q.put((event_type, src_path, timestamp))
+    # moved to DBHandler
+    # def _add_fs_event(self, event_type, src_path, timestamp):
+    #     """Invoked from observer when there are new events in filesystem"""
+    #     self.fs_event_q.put((event_type, src_path, timestamp))
 
     def _fs_process(self):
         """target function of self.fs_thread (daemon, background thread)"""
         while True:
-            event = self.fs_event_q.get()
+            e = self.fs_event_q.get()
+            what, event_type, src_path, dst_path = e
 
+            #print(e)
             # based on the event,
-            # if directory event... update fsmap...
+            if what == 'dir':
+                # If directory event... update fsmap...
+                # No need for streaming...
+                self._update_fsmap(event_type, src_path, dst_path)
+            else:
+                pass
             # if file event... update database...
             # [NOTE]: symlink comes with the absolute path!
+
+
             time.sleep(1)
 
             # update stream data
             # need to fix. it is streaming way.. so don't need to keep all,
             # if there are no clients.
-            print('fs_thread({}): {}'.format(get_ident(), event))
-            self.stream_q.put('{:s}: {:s} @ {}'.format(event[0], event[1], event[2]))
+            #print('fs_thread({}): {}'.format(get_ident(), event))
+            #self.stream_q.put('{:s}: {:s} @ {}'.format(event[0], event[1],
+            # event[2]))
 
     def get_dataframe(self):
         class DataFrame(BaseDataFrame):
