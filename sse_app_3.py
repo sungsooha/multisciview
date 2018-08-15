@@ -10,7 +10,7 @@ author: Sungsoo Ha (sungsooha@bnl.gov)
 import json
 from flask import Flask, Response, request, render_template
 from model.dataModel import DataHandler
-
+from config import CONFIG
 
 
 # ----------------------------------------------------------------------------
@@ -22,7 +22,13 @@ app = Flask(__name__)
 # - managing MongoDB
 # - sync files in folders user selected with MongoDB
 # - monitoring folders, updating some events, and broadcasting the results
-Data = DataHandler(rootDir='/Users/scott/Desktop/test3')
+Data = DataHandler(
+    rootDir=CONFIG['DATA_DIR'],
+    fsMapFn=CONFIG['FSMAP'],
+    db_host=CONFIG['DB']['HOST'],
+    db_port=CONFIG['DB']['PORT'],
+    xml_config=CONFIG['XML']
+)
 
 
 # ----------------------------------------------------------------------------
@@ -105,6 +111,28 @@ def stream():
         mimetype='text/event-stream',
         headers={'Cache-Control': 'no-cache'}
     )
+
+# ----------------------------------------------------------------------------
+# Data
+# ----------------------------------------------------------------------------
+@app.route('/api/data/samplelist', methods=['POST'])
+def get_db_samplelist():
+    data = request.get_json()
+    path = data['path']
+    recursive = data['recursive']
+    return json.dumps(Data.get_samplelist(path, recursive))
+
+@app.route('/api/data/sample', methods=['POST'])
+def get_sample():
+    data = request.get_json()
+    sampleNames = data['sampleNames']
+    path = data['path']
+    recursive = data['recursive']
+
+    return json.dumps({
+        'sampleList': sampleNames,
+        'sampleData': Data.get_samples(sampleNames, path, recursive)
+    })
 
 # ----------------------------------------------------------------------------
 # main

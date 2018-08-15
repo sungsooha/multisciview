@@ -78,6 +78,7 @@ class MultiViewMongo(object):
         self.collection.update()
 
     # core methods. load(), save(), delete()
+    # deprecated
     def save(self, document):
 
         # simplify thins below by making even a single document a list
@@ -133,7 +134,6 @@ class MultiViewMongo(object):
             upsert=True,
             return_document=ReturnDocument.BEFORE
         )
-        #print('[save_doc_one]: ', r, item)
         return r
 
     def save_img_one(self, doc, type='tiff'):
@@ -170,6 +170,17 @@ class MultiViewMongo(object):
             if old_img_doc is not None:
                 self.fs.delete(old_img_doc['data'])
         return r
+
+    def save_one(self, doc, kind):
+        if kind == '.xml':
+            self.save_doc_one(doc)
+        elif kind == '.jpg':
+            self.save_img_one(doc, 'jpg')
+        elif kind == '.tiff':
+            self.save_img_one(doc, 'tiff')
+        else:
+            return 0
+        return 1
 
     def loadFromIds(self, Ids):
 

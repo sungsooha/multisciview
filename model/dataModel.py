@@ -3,16 +3,38 @@ import threading
 import time
 import pymongo
 import json
-from uuid import uuid4
+from bson.objectid import ObjectId
 from threading import get_ident
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-from queue import Queue
 from db.multiviewmongo import MultiViewMongo
 from model.syncer import Syncer
 from queue import Queue
-
+from model.parser import Parser
 import datetime
+
+
+def replace_objid_to_str(doc):
+    if not isinstance(doc, dict):
+        return doc
+
+    for (key, value) in doc.items():
+        if isinstance(value, ObjectId):
+            doc[key] = str(value)
+        elif isinstance(value, dict):
+            doc[key] = replace_objid_to_str(value)
+
+    return doc
+
+def flatten_dict(d):
+    def expand(key, value):
+        if isinstance(value, dict):
+            return [(key + '/' + k, v) for k, v in flatten_dict(value).items()]
+        else:
+            return [(key, value)]
+
+    items = [item for k, v in d.items() for item in expand(k, v)]
+    return dict(items)
 
 class DataEvent(object):
     """An Event-like class that signals all active clients when a new stream data is available"""
@@ -135,8 +157,6 @@ class FSHandler(FileSystemEventHandler):
                 self._dispatch_file_event(event)
 
     def _dispatch_dir_event(self, event):
-
-        print(event)
         event_type = event.event_type
         src_path = event.src_path
 
@@ -149,22 +169,16 @@ class FSHandler(FileSystemEventHandler):
 
 
     def _dispatch_file_event(self, event):
+        print(event)
         event_type = event.event_type
         src_path = os.path.realpath(event.src_path)
 
-        # if self.callback is not None:
-        #     self.callback('file', event_type, src_path)
-
-        # if event_type == 'modified':
-        #     pass
-        # elif event_type == 'created':
-        #     pass
-        # elif event_type == 'moved':
-        #     pass
-        # elif event_type == 'deleted':
-        #     pass
-        # else:
-        #     pass
+        if event_type in ['created', 'deleted', 'modified']:
+            self.callback('file', event_type, src_path, None)
+        elif event_type in ['moved']:
+            self.callback('file', event_type, src_path, event.dest_path)
+        else:
+            pass
 
 class DBHandler(object):
     def __init__(
@@ -172,12 +186,16 @@ class DBHandler(object):
             rootDir,
             fsmapFn,
             db_host='localhost',
-            db_port=27017
+            db_port=27017,
+            xml_config=None
     ):
         self.rootDir = os.path.realpath(os.path.abspath(rootDir))
         self.fsmapFn = fsmapFn
         self.db_host = db_host
         self.db_port = db_port
+
+        self.parser = Parser(xml_config) if xml_config is not None else None
+
         self.extensions = ['.xml', '.jpg', '.tiff']
 
         # to ensure safe operation on fsmap
@@ -196,7 +214,15 @@ class DBHandler(object):
         self.fs_event_q = Queue()
         self.stream_q = Queue()
 
+        # old map
+        # This keeps old fsmap information when file system changes manually
+        # e.g. folder move, rename, etc
+        # If it is not empty dictionary, there is a bug....
+        self._old_fsmap = {}
+
     def __del__(self):
+        for _, h in self.clientPool.items():
+            h.close()
         self.client.close()
 
     def _load(self):
@@ -233,7 +259,7 @@ class DBHandler(object):
         with open(self.fsmapFn, 'w') as f:
             json.dump(t, f, indent=2, sort_keys=True)
 
-    def _traverse(self):
+    def _traverse(self, save_old=False):
         """Traverse root directory"""
         fsmap = {}
         for dirpath, _, _ in os.walk(self.rootDir, followlinks=True):
@@ -283,6 +309,12 @@ class DBHandler(object):
                     fsmap[value['realpath']]['link'] = key
                     value['link'] = fsmap[value['realpath']]['path']
 
+        # save unregistered fsmap from old one
+        if save_old:
+            for key, value in self.fsMap.items():
+                if key not in fsmap:
+                    self._old_fsmap[key] = dict(value)
+
         _keys_to_copy = ['valid', 'db', 'fixed', 'file', 'sep', 'group',
                          'last_sync']
         def __merge_fsmap(dstMap:dict, srcMap:dict):
@@ -302,7 +334,6 @@ class DBHandler(object):
                     _srcItem['valid'] = False
                     #srcItem['inSync'] = False
                     dstMap[key] = _srcItem
-
         __merge_fsmap(fsmap, self.fsMap)
         self.fsMap = fsmap
 
@@ -315,19 +346,133 @@ class DBHandler(object):
                 self._save()
             elif event_type in ['moved'] and dst_path is not None:
                 # moved event includes 'rename' and 'relocate a folder'
-                # 1. keep the information
-                # 2. refresh fsmap
-                # 3. and restore the information
                 cp_key = ['db', 'file', 'fixed', 'group', 'last_sync', 'sep']
-                if src_path in self.fsMap:
-                    prev_item = dict(self.fsMap[src_path])
-                    self._traverse()
-                    if dst_path in self.fsMap:
-                        curr_item = self.fsMap[dst_path]
-                        for k, v in prev_item.items():
-                            if k in cp_key:
-                                curr_item[k] = v
-                    self._save()
+
+                self._traverse(True)
+                if src_path in self._old_fsmap and dst_path in self.fsMap:
+                    old_item = self._old_fsmap[src_path]
+                    new_item = self.fsMap[dst_path]
+                    for k, v in old_item.items():
+                        if k in cp_key:
+                            new_item[k] = v
+                    del self._old_fsmap[src_path]
+                else:
+                    print('Error in handling DirMovedEvent: ', src_path, dst_path)
+
+    def _db_key(self, _db, _col, _fs):
+        _key = '{:s}::{:s}::{:s}'.format(_db, _col, _fs)
+        return _key
+
+    def _db_key_list(self, path, recursive, isUnique=False):
+        _key_list = []
+        def __recursive_db(_path, fsmap):
+            if _path not in fsmap: return
+
+            _db = fsmap[_path]['db']
+            if _db is None: return
+
+            _key = self._db_key(_db[0], _db[1], _db[2])
+            if not isUnique:
+                _key_list.append((_path, _key))
+            else:
+                if _key not in _key_list:
+                    _key_list.append(_key)
+
+            if recursive:
+                for _c_path in fsmap[_path]['children']:
+                    __recursive_db(_c_path, fsmap)
+        __recursive_db(path, self.fsMap)
+        return _key_list
+
+    def _get_db_handler(self, db_col_fs):
+        _db, _col, _fs = db_col_fs
+        _key = self._db_key(_db, _col, _fs)
+        if _key in self.clientPool:
+            return self.clientPool[_key]
+        else:
+            _h = MultiViewMongo(
+                connection=self.client,
+                db_name=_db,
+                collection_name=_col,
+                fs_name=_fs
+            )
+            self.clientPool[_key] = _h
+            return _h
+
+    def _get_db_handler_by_key(self, key:str):
+        if key in self.clientPool:
+            return self.clientPool[key]
+        else:
+            tokens = key.split('::')
+            _h = MultiViewMongo(
+                connection=self.client,
+                db_name=tokens[0],
+                collection_name=tokens[1],
+                fs_name=tokens[2]
+            )
+            self.clientPool[key] = _h
+            return _h
+
+
+    def _update_file(self, event_type, src_path, dst_path):
+        """Invoked when files change
+            By watchdog:
+            By syncer:
+        """
+        print(event_type, src_path, dst_path)
+        if self.parser is None:
+            print('parser is not set.')
+            return None
+        if dst_path is None:
+            _path = src_path
+            path, filename = os.path.split(src_path)
+        else:
+            _path = dst_path
+            path, filename = os.path.split(dst_path)
+
+        if len(filename) == 0:
+            print('fail to detect filename.')
+            return None
+
+        ext = os.path.splitext(filename)[1]
+        if len(ext) == 0 or ext not in self.extensions:
+            print('Unsupported extension type. {:s}'.format(ext))
+            return None
+
+        if path not in self.fsMap:
+            print("Path is not in fsmap. {:s}".format(path))
+            return None
+        if self.fsMap[path]['db'] is None:
+            print("DB is not set on this path. {:s}".format(path))
+            return None
+        if self.fsMap[path]['group'] is None:
+            print("Group name is not set to this path. {:s}".format(path))
+            return None
+        db = self.fsMap[path]['db']
+        group = self.fsMap[path]['group']
+
+        if event_type in ['created', 'modified', 'syncing', 'moved']:
+            doc = self.parser.run(_path, ext, group)
+            if doc is None:
+                return None
+
+            h = self._get_db_handler(db)
+            if h.save_one(doc, ext) == 0:
+                return None
+
+            if ext == '.xml':
+                query = {"sample": group, "item": doc['item']}
+                res = h.load(query=query, fields={}, getarrays=False)
+                return json.dumps(self.after_query(res))
+
+        elif event_type in ['deleted']:
+            # currently we do not delete any document in the db (should we?)
+            pass
+        else:
+            # unknown event_type
+            pass
+
+        return None
 
     def _add_fs_event(self, what, event_type, src_path, dst_path):
         """Invoked by observer and syncers"""
@@ -503,6 +648,91 @@ class DBHandler(object):
     #             db = self.fsMap[path]['db']
     #     return db
 
+    def after_query(self, res):
+        """Post processor on queried results"""
+        if not isinstance(res, list):
+            res = [res]
+
+        res = [replace_objid_to_str(doc) for doc in res]
+        res = [flatten_dict(doc) for doc in res]
+        # for doc in res:
+        #     doc['sample'] = '[{:s}][{:s}]{:s}'.format(db, col, doc['sample'])
+        #     doc['_id'] = '[{:s}][{:s}]{:s}'.format(db, col, doc['_id'])
+
+        return res
+
+    def get_samplelist(self, path, recursive):
+        if path not in self.fsMap:
+            return []
+
+        samplelist = {}
+
+        db_key_list = self._db_key_list(path, recursive)
+        _db_list = self.client.list_database_names()
+        for _path, _key in db_key_list:
+            _db, _col, _fs = _key.split("::")
+
+            if _db not in _db_list:
+                continue
+
+            _col_list = self.client[_db].collection_names()
+            if _col not in _col_list:
+                continue
+
+            h = self._get_db_handler_by_key(_key)
+            pipeline = [
+                {"$match": {"path": _path}},
+                {"$match": {"sample": {"$exists": True, "$ne": None}}},
+                {"$group": {"_id": "$sample", "count": {"$sum": 1}}}
+            ]
+            res = list(h.collection.aggregate(pipeline))
+
+            for r in res:
+                _id = r['_id']
+                _count = r['count']
+
+                if _id in samplelist:
+                    samplelist[_id] += _count
+                else:
+                    samplelist[_id] = _count
+
+        return samplelist
+
+    def get_samples(self, names, path, recursive):
+        if path not in self.fsMap:
+            return {}
+
+        sampleData = {}
+        db_key_list = self._db_key_list(path, recursive, False)
+        _db_list = self.client.list_database_names()
+        for _path, _key in db_key_list:
+            _db, _col, _fs = _key.split("::")
+
+            if _db not in _db_list:
+                continue
+
+            _col_list = self.client[_db].collection_names()
+            if _col not in _col_list:
+                continue
+
+            h = self._get_db_handler_by_key(_key)
+            for name in names:
+                query = {"sample": name, "path": _path}
+                res = h.load(query=query, fields={}, getarrays=False)
+
+                if not isinstance(res, list):
+                    res = [res]
+
+                res = [replace_objid_to_str(doc) for doc in res]
+                res = [flatten_dict(doc) for doc in res]
+
+                if name in sampleData:
+                    sampleData[name].append(res)
+                else:
+                    sampleData[name] = res
+        return sampleData
+
+
 class DBHandlerWithSyncer(DBHandler):
     """
     On top of DBHandler, implement syncer handler here.
@@ -524,8 +754,9 @@ class DBHandlerWithSyncer(DBHandler):
     }
     """
 
-    def __init__(self, rootDir, fsmapFn, db_host='localhost', db_port=27017):
-        super().__init__(rootDir, fsmapFn, db_host, db_port)
+    def __init__(self, rootDir, fsmapFn,
+                 db_host='localhost', db_port=27017, xml_config=None):
+        super().__init__(rootDir, fsmapFn, db_host, db_port, xml_config)
         self.syncerPool = {}
 
     def __del__(self):
@@ -572,7 +803,9 @@ class DBHandlerWithSyncer(DBHandler):
     def _sync_request(self, path, item):
         """On request on syncing..."""
         files_to_sync = self._sync_files(path)
-        h = Syncer(files_to_sync, path, item, self._sync_on_finished)
+        h = Syncer(files_to_sync, path, item,
+                   self._sync_on_finished,
+                   self._add_fs_event)
         # before starting the syncer, update fsmap
         with self.fsmap_lock:
             fs = self.fsMap[path]
@@ -666,13 +899,15 @@ class DataHandler(DBHandlerWithSyncer):
             rootDir,
             fsMapFn='./fsmap.json',
             db_host='localhost',
-            db_port=27017
+            db_port=27017,
+            xml_config=None
     ):
         super().__init__(
             os.path.realpath(os.path.abspath(rootDir)),
             os.path.abspath(fsMapFn),
             db_host,
-            db_port
+            db_port,
+            xml_config
         )
 
         # moved to DBHandler
@@ -702,11 +937,6 @@ class DataHandler(DBHandlerWithSyncer):
         self.observer.stop()
         self.observer.join()
 
-    # moved to DBHandler
-    # def _add_fs_event(self, event_type, src_path, timestamp):
-    #     """Invoked from observer when there are new events in filesystem"""
-    #     self.fs_event_q.put((event_type, src_path, timestamp))
-
     def _fs_process(self):
         """target function of self.fs_thread (daemon, background thread)"""
         while True:
@@ -719,20 +949,17 @@ class DataHandler(DBHandlerWithSyncer):
                 # If directory event... update fsmap...
                 # No need for streaming...
                 self._update_fsmap(event_type, src_path, dst_path)
+            elif what == 'file' or what == 'sync':
+                # If file event... update database...
+                # add to streaming queue
+                resp = self._update_file(event_type, src_path, dst_path)
+                if resp is not None:
+                    self.stream_q.put(resp)
             else:
                 pass
             # if file event... update database...
             # [NOTE]: symlink comes with the absolute path!
-
-
-            time.sleep(1)
-
-            # update stream data
-            # need to fix. it is streaming way.. so don't need to keep all,
-            # if there are no clients.
-            #print('fs_thread({}): {}'.format(get_ident(), event))
-            #self.stream_q.put('{:s}: {:s} @ {}'.format(event[0], event[1],
-            # event[2]))
+            time.sleep(0.001)
 
     def get_dataframe(self):
         class DataFrame(BaseDataFrame):
