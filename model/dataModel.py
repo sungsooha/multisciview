@@ -4,6 +4,7 @@ import time
 import pymongo
 import json
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from threading import get_ident
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -169,7 +170,6 @@ class FSHandler(FileSystemEventHandler):
 
 
     def _dispatch_file_event(self, event):
-        print(event)
         event_type = event.event_type
         src_path = os.path.realpath(event.src_path)
 
@@ -413,13 +413,11 @@ class DBHandler(object):
             self.clientPool[key] = _h
             return _h
 
-
     def _update_file(self, event_type, src_path, dst_path):
         """Invoked when files change
             By watchdog:
             By syncer:
         """
-        print(event_type, src_path, dst_path)
         if self.parser is None:
             print('parser is not set.')
             return None
@@ -463,7 +461,8 @@ class DBHandler(object):
             if ext == '.xml':
                 query = {"sample": group, "item": doc['item']}
                 res = h.load(query=query, fields={}, getarrays=False)
-                return json.dumps(self.after_query(res))
+                res = self.after_query(res)
+                return json.dumps(res)
 
         elif event_type in ['deleted']:
             # currently we do not delete any document in the db (should we?)
@@ -720,17 +719,42 @@ class DBHandler(object):
                 query = {"sample": name, "path": _path}
                 res = h.load(query=query, fields={}, getarrays=False)
 
-                if not isinstance(res, list):
-                    res = [res]
+                if res is None:
+                    continue
 
-                res = [replace_objid_to_str(doc) for doc in res]
-                res = [flatten_dict(doc) for doc in res]
+                res = self.after_query(res)
 
                 if name in sampleData:
                     sampleData[name].append(res)
                 else:
                     sampleData[name] = res
         return sampleData
+
+    def get_tiff(self, id, path):
+        if path not in self.fsMap:
+            return []
+
+        if self.fsMap[path]['db'] is None:
+            return []
+
+        db = self.fsMap[path]['db']
+        h = self._get_db_handler(db)
+
+        try:
+            _id = ObjectId(id)
+        except InvalidId:
+            return []
+
+        query = {'_id': _id, 'tiff': {'$exists': True}}
+        fields = {'tiff': 1, '_id': 0}
+        res = h.load(query, fields, getarrays=True)
+
+        if res is None:
+            return []
+
+        data = res['tiff']['data']
+        res['tiff']['data'] = data.tolist()
+        return res['tiff']
 
 
 class DBHandlerWithSyncer(DBHandler):
@@ -910,10 +934,6 @@ class DataHandler(DBHandlerWithSyncer):
             xml_config
         )
 
-        # moved to DBHandler
-        #self.fs_event_q = Queue() # event queue in filesystem
-        #self.stream_q = Queue()   # streaming data queue
-
         # watchdog
         self.observer = Observer()
         self.observer.schedule(
@@ -943,7 +963,6 @@ class DataHandler(DBHandlerWithSyncer):
             e = self.fs_event_q.get()
             what, event_type, src_path, dst_path = e
 
-            #print(e)
             # based on the event,
             if what == 'dir':
                 # If directory event... update fsmap...
@@ -953,7 +972,7 @@ class DataHandler(DBHandlerWithSyncer):
                 # If file event... update database...
                 # add to streaming queue
                 resp = self._update_file(event_type, src_path, dst_path)
-                if resp is not None:
+                if resp is not None and len(resp):
                     self.stream_q.put(resp)
             else:
                 pass

@@ -149,7 +149,7 @@ class Parser(object):
             return self.xml_to_doc(path, sample_name)
         elif kind == '.jpg':
             return self.jpg_to_doc(path, sample_name)
-        elif kind == './tiff':
+        elif kind == '.tiff':
             return self.tiff_to_doc(path, sample_name)
         else:
             return None

@@ -3509,24 +3509,25 @@ var slice = array.slice;
 /*!****************************************!*\
   !*** ./app/src/actions/dataActions.js ***!
   \****************************************/
-/*! exports provided: setValue, get_color_map, close_message, get_data, del_data, changeSelectedSampleColors, get_tiff_with_priority, changeDataAttr, changeScatterColorDomain, changeScatterColorScheme, changeImgColorScheme, changeImgDomain, changePCPSelectedAttrs, update_db_info */
-/*! exports used: changeDataAttr, changeImgColorScheme, changeImgDomain, changePCPSelectedAttrs, changeScatterColorDomain, changeScatterColorScheme, changeSelectedSampleColors, close_message, del_data, get_color_map, get_data, get_tiff_with_priority, setValue */
+/*! exports provided: setValue, get_color_map, close_message, get_data, add_data, del_data, changeSelectedSampleColors, get_tiff_with_priority, changeDataAttr, changeScatterColorDomain, changeScatterColorScheme, changeImgColorScheme, changeImgDomain, changePCPSelectedAttrs, update_db_info */
+/*! exports used: add_data, changeDataAttr, changeImgColorScheme, changeImgDomain, changePCPSelectedAttrs, changeScatterColorDomain, changeScatterColorScheme, changeSelectedSampleColors, close_message, del_data, get_color_map, get_data, get_tiff_with_priority, setValue */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-/* harmony export (immutable) */ __webpack_exports__["m"] = setValue;
-/* harmony export (immutable) */ __webpack_exports__["j"] = get_color_map;
-/* harmony export (immutable) */ __webpack_exports__["h"] = close_message;
-/* harmony export (immutable) */ __webpack_exports__["k"] = get_data;
-/* harmony export (immutable) */ __webpack_exports__["i"] = del_data;
-/* harmony export (immutable) */ __webpack_exports__["g"] = changeSelectedSampleColors;
-/* harmony export (immutable) */ __webpack_exports__["l"] = get_tiff_with_priority;
-/* harmony export (immutable) */ __webpack_exports__["a"] = changeDataAttr;
-/* harmony export (immutable) */ __webpack_exports__["e"] = changeScatterColorDomain;
-/* harmony export (immutable) */ __webpack_exports__["f"] = changeScatterColorScheme;
-/* harmony export (immutable) */ __webpack_exports__["b"] = changeImgColorScheme;
-/* harmony export (immutable) */ __webpack_exports__["c"] = changeImgDomain;
-/* harmony export (immutable) */ __webpack_exports__["d"] = changePCPSelectedAttrs;
+/* harmony export (immutable) */ __webpack_exports__["n"] = setValue;
+/* harmony export (immutable) */ __webpack_exports__["k"] = get_color_map;
+/* harmony export (immutable) */ __webpack_exports__["i"] = close_message;
+/* harmony export (immutable) */ __webpack_exports__["l"] = get_data;
+/* harmony export (immutable) */ __webpack_exports__["a"] = add_data;
+/* harmony export (immutable) */ __webpack_exports__["j"] = del_data;
+/* harmony export (immutable) */ __webpack_exports__["h"] = changeSelectedSampleColors;
+/* harmony export (immutable) */ __webpack_exports__["m"] = get_tiff_with_priority;
+/* harmony export (immutable) */ __webpack_exports__["b"] = changeDataAttr;
+/* harmony export (immutable) */ __webpack_exports__["f"] = changeScatterColorDomain;
+/* harmony export (immutable) */ __webpack_exports__["g"] = changeScatterColorScheme;
+/* harmony export (immutable) */ __webpack_exports__["c"] = changeImgColorScheme;
+/* harmony export (immutable) */ __webpack_exports__["d"] = changeImgDomain;
+/* harmony export (immutable) */ __webpack_exports__["e"] = changePCPSelectedAttrs;
 /* unused harmony export update_db_info */
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_axios__ = __webpack_require__(/*! axios */ 70);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_axios___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_axios__);
@@ -3587,11 +3588,6 @@ function close_message() {
     };
 }
 
-var imageRequestOnProgress = function imageRequestOnProgress() {
-    var count = tiffRequest.length + pqTiff.length();
-    return count;
-};
-
 // used to get data by sample names
 function get_data(sampleNames, path, recursive) {
     return function (dispatch) {
@@ -3606,6 +3602,14 @@ function get_data(sampleNames, path, recursive) {
                 payload: e
             });
         });
+    };
+}
+
+// used to add data
+function add_data(data) {
+    return {
+        type: 'ADD_DATA',
+        payload: { data: data }
     };
 }
 
@@ -3625,20 +3629,27 @@ function changeSelectedSampleColors(sampleName) {
     };
 }
 
-function get_tiff(id) {
-    var pos1 = id.indexOf(']');
-    var pos2 = id.indexOf(']', pos1 + 1);
-    var db = id.slice(1, pos1);
-    var col = id.slice(pos1 + 2, pos2);
-    var _id = id.slice(pos2 + 1);
+// used to handle image data request
+var imageRequestOnProgress = function imageRequestOnProgress() {
+    var count = tiffRequest.length + pqTiff.length();
+    return count;
+};
 
+function get_tiff(key) {
     return function (dispatch) {
-        __WEBPACK_IMPORTED_MODULE_0_axios___default.a.get("/api/data/tiff", { params: { db: db, col: col, _id: _id } }).then(function (resp) {
-            var idx = tiffRequest.indexOf(id);
+        var tokens = key.split("::");
+        var id = tokens[0];
+        var path = tokens[1];
+        __WEBPACK_IMPORTED_MODULE_0_axios___default.a.post("/api/data/tiff", { id: id, path: path }).then(function (resp) {
+            var idx = tiffRequest.indexOf(key);
             if (idx > -1) tiffRequest.splice(idx, 1);
             dispatch({
                 type: "GET_TIFF",
-                payload: { id: id, data: resp.data, count: imageRequestOnProgress() }
+                payload: {
+                    id: id,
+                    data: resp.data,
+                    count: imageRequestOnProgress()
+                }
             });
         }).catch(function (e) {
             dispatch({
@@ -3649,13 +3660,14 @@ function get_tiff(id) {
     };
 }
 
-function get_tiff_with_priority(id) {
-    var priority = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : __WEBPACK_IMPORTED_MODULE_2__utils__["a" /* PRIORITY */].LOW_MID;
+function get_tiff_with_priority(id, path) {
+    var priority = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : __WEBPACK_IMPORTED_MODULE_2__utils__["a" /* PRIORITY */].LOW_MID;
 
     return function (dispatch) {
-        if (tiffRequest.indexOf(id) > -1) return;
+        var key = id + "::" + path;
+        if (tiffRequest.indexOf(key) > -1) return;
 
-        pqTiff.replace(id, priority, function (a, b) {
+        pqTiff.replace(key, priority, function (a, b) {
             return a === b;
         });
         if (tiffRequest.length > TIFF_MAX_REQUEST) return;
@@ -19953,13 +19965,14 @@ var ImgViewer = function (_React$Component) {
 		value: function componentDidMount() {
 			var _props = this.props,
 			    imgPool = _props.imgPool,
-			    id = _props.id;
+			    id = _props.id,
+			    data = _props.data;
 
 			if (imgPool && imgPool[id]) {
 				this.setState({ id: id, img: imgPool[id] });
 			}
 			if (this.props.onImageRequest) {
-				this.props.onImageRequest(id, 5);
+				this.props.onImageRequest(data, 5);
 			}
 		}
 	}, {
@@ -19967,7 +19980,8 @@ var ImgViewer = function (_React$Component) {
 		value: function componentWillReceiveProps(nextProps) {
 			var imgPool = nextProps.imgPool,
 			    id = nextProps.id,
-			    onImageRequest = nextProps.onImageRequest;
+			    onImageRequest = nextProps.onImageRequest,
+			    data = nextProps.data;
 
 			var oldId = this.state.id;
 			if (oldId && id === oldId) {
@@ -19978,7 +19992,7 @@ var ImgViewer = function (_React$Component) {
 				return;
 			}
 			if (onImageRequest) {
-				onImageRequest(id, 5);
+				onImageRequest(data, 5);
 			}
 			this.setState({ id: null, img: null });
 		}
@@ -22660,6 +22674,28 @@ var get_data = function get_data(state, payload) {
     });
 };
 
+// - used to update dataBySamples
+// - unlike get_data method, this will add/modify individual items.
+// - update will only happen when users already have same sample group.
+var add_data = function add_data(state, payload) {
+    var data = payload.data;
+
+    var dataBySamples = _extends({}, state.dataBySamples);
+    data.forEach(function (d) {
+        if (d.hasOwnProperty('sample')) {
+            var name = d.sample;
+            if (dataBySamples.hasOwnProperty(name)) {
+                var arr = dataBySamples[name];
+                var idx = arr.findIndex(function (a) {
+                    return a._id === d._id;
+                });
+                idx >= 0 ? arr[idx] = _extends({}, d) : arr.push(d);
+            }
+        }
+    });
+    return _extends({}, state, { dataBySamples: dataBySamples });
+};
+
 // used to update dataBySamples
 // - it deletes data by selected sample names
 var del_data = function del_data(state, payload) {
@@ -22684,17 +22720,6 @@ var change_selected_sample_colors = function change_selected_sample_colors(state
     });
 
     return _extends({}, state, { sampleColors: sampleColors });
-};
-
-// deprecated
-var get_current_data_stat = function get_current_data_stat(state, payload) {
-    var sampleNames = Object.keys(payload);
-    var sampleColors = _update_sample_colors(state, sampleNames);
-
-    return _extends({}, state, {
-        statBySamples: payload,
-        sampleColors: sampleColors
-    });
 };
 
 var change_data_attr = function change_data_attr(state, payload) {
@@ -22755,6 +22780,8 @@ function dataReducers() {
 
         case "GET_DATA":
             return get_data(state, payload);
+        case "ADD_DATA":
+            return add_data(state, payload);
         case "DEL_DATA":
             return del_data(state, payload);
         case "CHANGE_SELECTED_SAMPLE_COLORS":
@@ -27770,7 +27797,9 @@ var MultiViewApp = function (_React$Component) {
             this.evtSource = new EventSource('/stream');
             this.evtSource.onmessage = function (event) {
                 var data = JSON.parse(event.data);
-                console.log(data);
+                if (_this2.props.add_data) {
+                    _this2.props.add_data(data);
+                }
             };
         }
     }, {
@@ -27852,8 +27881,9 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        get_color_map: __WEBPACK_IMPORTED_MODULE_3__actions_dataActions__["j" /* get_color_map */],
-        close_message: __WEBPACK_IMPORTED_MODULE_3__actions_dataActions__["h" /* close_message */]
+        add_data: __WEBPACK_IMPORTED_MODULE_3__actions_dataActions__["a" /* add_data */],
+        get_color_map: __WEBPACK_IMPORTED_MODULE_3__actions_dataActions__["k" /* get_color_map */],
+        close_message: __WEBPACK_IMPORTED_MODULE_3__actions_dataActions__["i" /* close_message */]
     }, dispatch);
 }
 
@@ -42628,10 +42658,10 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        onSampleAdd: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["k" /* get_data */],
-        onSampleDel: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["i" /* del_data */],
-        onColorChange: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["g" /* changeSelectedSampleColors */],
-        onWdirChange: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["m" /* setValue */]
+        onSampleAdd: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["l" /* get_data */],
+        onSampleDel: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["j" /* del_data */],
+        onColorChange: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["h" /* changeSelectedSampleColors */],
+        onWdirChange: __WEBPACK_IMPORTED_MODULE_12__actions_dataActions__["n" /* setValue */]
     }, dispatch);
 }
 
@@ -42760,7 +42790,7 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        setValue: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["m" /* setValue */]
+        setValue: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["n" /* setValue */]
     }, dispatch);
 }
 
@@ -43748,10 +43778,11 @@ var SyncView = function (_React$Component) {
         value: function componentWillReceiveProps(nextProps) {
             var selectedDir = nextProps.selectedDir,
                 recursive = nextProps.recursive;
+            // const isSameDir = selectedDir === this.props.selectedDir;
+            // const isSameMode = recursive === this.props.recursive;
+            // if (!(isSameDir && isSameMode))
 
-            var isSameDir = selectedDir === this.props.selectedDir;
-            var isSameMode = recursive === this.props.recursive;
-            if (!(isSameDir && isSameMode)) this.asyncGetSampleFiles(selectedDir, recursive);
+            this.asyncGetSampleFiles(selectedDir, recursive);
         }
     }, {
         key: 'componentWillUnmount',
@@ -44912,9 +44943,9 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
 				return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-								handleAttrChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["a" /* changeDataAttr */],
-								onColorSchemeChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["f" /* changeScatterColorScheme */],
-								onColorDomainChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["e" /* changeScatterColorDomain */]
+								handleAttrChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["b" /* changeDataAttr */],
+								onColorSchemeChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["g" /* changeScatterColorScheme */],
+								onColorDomainChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["f" /* changeScatterColorDomain */]
 				}, dispatch);
 }
 
@@ -47563,24 +47594,23 @@ var _initialiseProps = function _initialiseProps() {
 
 	this.handleMouseMove = function (mouseXY, e) {
 		return;
-		if (!_this3.state.enableHitTest) return;
+		// if (!this.state.enableHitTest) return; 
 
-		if (!_this3.waitingForAnimationFrame) {
-			// eslint-disable-line
-			_this3.waitingForAnimationFrame = true;
-			var state = _this3.getHoveredDataItem(mouseXY);
-			_this3.triggerEvent("mousemove", {
-				mouseXY: state
-			}, e);
-			requestAnimationFrame(function () {
-				_this3.clearMouseCoordCanvas();
-				_this3.draw({ trigger: "mousemove" });
-				_this3.waitingForAnimationFrame = false;
-				if (_this3.props.onDataRequest && state.id) {
-					_this3.props.onDataRequest(state.id);
-				}
-			});
-		}
+		// if (!this.waitingForAnimationFrame) { // eslint-disable-line
+		// 	this.waitingForAnimationFrame = true;
+		// 	const state = this.getHoveredDataItem(mouseXY);
+		// 	this.triggerEvent("mousemove", {
+		// 		mouseXY: state
+		// 	}, e);
+		// 	requestAnimationFrame(() => {
+		// 		this.clearMouseCoordCanvas();
+		// 		this.draw({ trigger: "mousemove" });
+		// 		this.waitingForAnimationFrame = false;
+		// 		if (this.props.onDataRequest && state.id) {
+		// 			this.props.onDataRequest(state.id);
+		// 		}
+		// 	});
+		// }
 	};
 
 	this.searchDataItemOnPath = function (startXY, endXY) {
@@ -48799,7 +48829,8 @@ var DraggableDataBox = function (_React$Component) {
 
             var _selected$currSelecte = selected[currSelectedIndex],
                 id = _selected$currSelecte.id,
-                info = _selected$currSelecte.info;
+                info = _selected$currSelecte.info,
+                data = _selected$currSelecte.data;
             var _state2 = this.state,
                 imgRefWidth = _state2.imgRefWidth,
                 imgRefHeight = _state2.imgRefHeight,
@@ -48857,6 +48888,7 @@ var DraggableDataBox = function (_React$Component) {
                                 imgRefWidth: imgRefWidth,
                                 imgRefHeight: imgRefHeight,
                                 id: id,
+                                data: data,
                                 imgPool: imgPool,
                                 onImageRequest: function onImageRequest(id, priority) {
                                     return handleImageRequest(id, 2 * priority);
@@ -49828,6 +49860,7 @@ var ScatterSeries = function (_React$Component) {
           imgRefWidth: _this.__imgRefWidth,
           imgRefHeight: _this.__imgRefHeight,
           id: d._id,
+          data: d,
           imgPool: imgPool,
           onImageRequest: handleImageRequest,
           showGrid: showGrid,
@@ -57287,10 +57320,10 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        onSwitchChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["m" /* setValue */],
-        onSliderChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["m" /* setValue */],
-        onImgColorSchemeChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["b" /* changeImgColorScheme */],
-        onImageDomainChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["c" /* changeImgDomain */]
+        onSwitchChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["n" /* setValue */],
+        onSliderChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["n" /* setValue */],
+        onImgColorSchemeChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["c" /* changeImgColorScheme */],
+        onImageDomainChange: __WEBPACK_IMPORTED_MODULE_10__actions_dataActions__["d" /* changeImgDomain */]
     }, dispatch);
 }
 
@@ -57512,8 +57545,8 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        updateDimOrder: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["d" /* changePCPSelectedAttrs */],
-        changeColorAttr: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["a" /* changeDataAttr */]
+        updateDimOrder: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["e" /* changePCPSelectedAttrs */],
+        changeColorAttr: __WEBPACK_IMPORTED_MODULE_6__actions_dataActions__["b" /* changeDataAttr */]
     }, dispatch);
 }
 
@@ -57868,9 +57901,9 @@ var _initialiseProps = function _initialiseProps() {
         if (_this3.ScatterChartCanvasNode) return _this3.ScatterChartCanvasNode;
     };
 
-    this.handleDataRequest = function (dataID, priority) {
+    this.handleDataRequest = function (dataID, path, priority) {
         //console.log('handleDataRequest: ', dataID)
-        if (_this3.props.onDataRequest) _this3.props.onDataRequest(dataID, priority);
+        if (_this3.props.onDataRequest) _this3.props.onDataRequest(dataID, path, priority);
     };
 
     this.handleSelectDataItems = function (selectedDataList) {
@@ -57931,11 +57964,19 @@ var ScatterView = function (_React$Component) {
             args[_key] = arguments[_key];
         }
 
-        return _ret = (_temp = (_this = _possibleConstructorReturn(this, (_ref = ScatterView.__proto__ || Object.getPrototypeOf(ScatterView)).call.apply(_ref, [this].concat(args))), _this), _this.handleDataImageRequest = function (dataID) {
+        return _ret = (_temp = (_this = _possibleConstructorReturn(this, (_ref = ScatterView.__proto__ || Object.getPrototypeOf(ScatterView)).call.apply(_ref, [this].concat(args))), _this), _this.handleDataImageRequest = function (data) {
             var priority = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 3;
             var imgPool = _this.props.imgPool;
 
-            if (_this.props.get_tiff_with_priority && imgPool[dataID] == null) _this.props.get_tiff_with_priority(dataID, priority);
+            var id = data._id;
+            var path = data.path;
+
+            if (id == null || path == null) {
+                console.log('Invlid image request: ', data);
+                return;
+            }
+
+            if (_this.props.get_tiff_with_priority && imgPool[id] == null) _this.props.get_tiff_with_priority(id, path, priority);
         }, _temp), _possibleConstructorReturn(_this, _ret);
     }
 
@@ -57948,9 +57989,6 @@ var ScatterView = function (_React$Component) {
                 onDataRequest: this.handleDataImageRequest,
                 onSelectDataItems: null
             });
-
-            //debugger;
-            //console.log(chartProps)
 
             return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_5__components__["e" /* ScatterChart */], _extends({
                 ref: "ScatterChartRef"
@@ -57985,7 +58023,7 @@ function mapStateToProps(state) {
 
 function mapDispatchToProps(dispatch) {
     return Object(__WEBPACK_IMPORTED_MODULE_2_redux__["b" /* bindActionCreators */])({
-        get_tiff_with_priority: __WEBPACK_IMPORTED_MODULE_4__actions_dataActions__["l" /* get_tiff_with_priority */]
+        get_tiff_with_priority: __WEBPACK_IMPORTED_MODULE_4__actions_dataActions__["m" /* get_tiff_with_priority */]
     }, dispatch);
 }
 
