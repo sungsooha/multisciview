@@ -27825,7 +27825,7 @@ var MultiViewApp = function (_React$Component) {
                 width = _state.width,
                 height = _state.height;
 
-            var MAX_TABVIEW_WIDTH = 800;
+            var MAX_TABVIEW_WIDTH = 700;
             var r_width = Math.min(Math.floor(0.35 * width), MAX_TABVIEW_WIDTH);
             var l_width = width - r_width;
             var _props = this.props,
