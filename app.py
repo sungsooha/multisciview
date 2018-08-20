@@ -140,24 +140,6 @@ def get_tiff():
     id = data['id']
     path = data['path']
     return json.dumps(Data.get_tiff(id, path))
-    # db = request.args.get('db')
-    # col = request.args.get('col')
-    # _id = request.args.get('_id')
-    # try:
-    #     _id = ObjectId(_id)
-    # except InvalidId:
-    #     print('[get_tiff] Invalid ObjectId')
-    #     return json.dumps({})
-    #
-    # h = g_dbModel.get_client([db, col, 'fs'])
-    # query = {'_id': _id, 'tiff':{'$exists':True}}
-    # fields = {'tiff': 1, '_id': 0}
-    # res = h.load(query, fields, getarrays=True)
-    #
-    # if res is None: return json.dumps({})
-    # data = res['tiff']['data']
-    # res['tiff']['data'] = data.tolist()
-    # return json.dumps(res['tiff'])
 
 
 # ----------------------------------------------------------------------------
