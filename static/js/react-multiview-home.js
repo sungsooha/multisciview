@@ -3592,7 +3592,7 @@ function close_message() {
 function get_data(sampleNames, path, recursive) {
     return function (dispatch) {
         __WEBPACK_IMPORTED_MODULE_0_axios___default.a.post("/api/data/sample", { sampleNames: sampleNames, path: path, recursive: recursive }).then(function (resp) {
-            console.log(resp.data);
+            //console.log(resp.data)
             dispatch({
                 type: "GET_DATA",
                 payload: resp.data
@@ -22661,13 +22661,12 @@ var get_data = function get_data(state, payload) {
     var sampleList = payload.sampleList,
         sampleData = payload.sampleData;
 
-
-    console.log(sampleList);
-    console.log(sampleData);
+    //console.log(sampleList)
+    //console.log(sampleData)
 
     var dataBySamples = _extends({}, state.dataBySamples);
     var keyList = sampleList.map(function (name) {
-        console.log(name);
+        //console.log(name)
         dataBySamples[name] = [].concat(_toConsumableArray(sampleData[name]));
         return name;
     });
@@ -27802,10 +27801,10 @@ var MultiViewApp = function (_React$Component) {
             this.evtSource = new EventSource('/stream');
             this.evtSource.onmessage = function (event) {
                 var data = JSON.parse(event.data);
-                console.log(data);
-                // if (this.props.add_data) {
-                //     this.props.add_data(data);
-                // }
+                //console.log(data);
+                if (_this2.props.add_data) {
+                    _this2.props.add_data(data);
+                }
             };
         }
     }, {
