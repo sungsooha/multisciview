@@ -22662,6 +22662,7 @@ var get_data = function get_data(state, payload) {
 
 
     console.log(sampleList);
+    console.log(sampleData);
 
     var dataBySamples = _extends({}, state.dataBySamples);
     var keyList = sampleList.map(function (name) {
