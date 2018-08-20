@@ -27799,9 +27799,10 @@ var MultiViewApp = function (_React$Component) {
             this.evtSource = new EventSource('/stream');
             this.evtSource.onmessage = function (event) {
                 var data = JSON.parse(event.data);
-                if (_this2.props.add_data) {
-                    _this2.props.add_data(data);
-                }
+                console.log(data);
+                // if (this.props.add_data) {
+                //     this.props.add_data(data);
+                // }
             };
         }
     }, {
