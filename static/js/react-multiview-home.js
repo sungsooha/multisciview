@@ -3592,6 +3592,7 @@ function close_message() {
 function get_data(sampleNames, path, recursive) {
     return function (dispatch) {
         __WEBPACK_IMPORTED_MODULE_0_axios___default.a.post("/api/data/sample", { sampleNames: sampleNames, path: path, recursive: recursive }).then(function (resp) {
+            console.log(resp.data);
             dispatch({
                 type: "GET_DATA",
                 payload: resp.data
