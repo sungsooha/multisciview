@@ -3,6 +3,7 @@ from bson.objectid import ObjectId
 import gridfs
 import pymongo
 from pymongo import ReturnDocument
+from pymongo.errors import ConnectionFailure
 import pickle
 import numpy as np
 import datetime
@@ -15,29 +16,60 @@ __all__ = ['MultiViewMongo']
 
 class MultiViewMongo(object):
 
-    def __init__(self, db_name, collection_name, hostname='localhost', port=27017, username="", password=""):
-        self.db_name = db_name
-        self.collection_name = collection_name
+    def __init__(self,
+                 connection=None,
+                 hostname='localhost',
+                 port=27017,
+                 db_name=None,
+                 collection_name=None,
+                 fs_name="fs",
+                 username="",
+                 password=""):
         self.hostname = hostname
         self.port = port
 
-        self.connection = pymongo.MongoClient(hostname, port)
-        #if (username != ""):
-        #    admin_db = self.connection["admin"]
-        #    admin_db = admin_db.authenticate(username, password)
+        self.external_connection = False
+        if connection is None:
+            # Beginning in PyMongo 3 (not Python 3, PyMongo 3!), the MongoClient constructor no longer blocks
+            # trying to connect to the MongoDB server. Instead, the first actual operation you do will wait
+            # until the connection completes, and then throw an exception if connection fails.
+            self.connection = pymongo.MongoClient(self.hostname, self.port)
+            try:
+                self.connection.list_database_names()
+            except ConnectionFailure:
+                exit("MondoDB server is not available.")
+            finally:
+                print("Get connection to MongoDB server @ {}:{}".format(self.hostname, self.port))
+        else:
+            self.connection = connection
+            self.external_connection = True
 
-        self.db = self.connection[self.db_name]
-        self.fs = gridfs.GridFS(self.db, 'fs')
+        self.db_name = None
+        self.collection_name = None
+        self.fs_name = None
+        self.db = None
+        self.collection = None
+        self.fs = None
+        self.open(db_name, collection_name, fs_name)
 
-        self.collection = self.db[collection_name]
-
-        print('Run mongdo database')
-        print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
+    def open(self, db_name, collection_name, fs_name):
+        if db_name is not None and collection_name is not None and fs_name is not None:
+            self.db_name = db_name
+            self.collection_name = collection_name
+            self.fs_name = fs_name
+            self.db = self.connection[self.db_name]
+            self.collection = self.db[self.collection_name]
+            self.fs = gridfs.GridFS(self.db, 'fs')
+            print("Open DB({}).COL({}) (FS:{})".format(self.db_name, self.collection_name, self.fs_name))
+            return True
+        else:
+            print("Failed to open DB({}).COL({}) (FS:{})".format(self.db_name, self.collection_name, self.fs_name))
+            return False
 
     def _close(self):
-        print('Close mongdo database')
-        print('{}.{} @ {}:{}'.format(self.db_name, self.collection_name, self.hostname, self.port))
-        self.connection.close()
+        if not self.external_connection:
+            print('Close mongdo database')
+            self.connection.close()
 
     def __del__(self):
         self._close()
@@ -46,6 +78,7 @@ class MultiViewMongo(object):
         self.collection.update()
 
     # core methods. load(), save(), delete()
+    # deprecated
     def save(self, document):
 
         # simplify thins below by making even a single document a list
@@ -101,7 +134,6 @@ class MultiViewMongo(object):
             upsert=True,
             return_document=ReturnDocument.BEFORE
         )
-        #print('[save_doc_one]: ', r, item)
         return r
 
     def save_img_one(self, doc, type='tiff'):
@@ -139,6 +171,16 @@ class MultiViewMongo(object):
                 self.fs.delete(old_img_doc['data'])
         return r
 
+    def save_one(self, doc, kind):
+        if kind == '.xml':
+            self.save_doc_one(doc)
+        elif kind == '.jpg':
+            self.save_img_one(doc, 'jpg')
+        elif kind == '.tiff':
+            self.save_img_one(doc, 'tiff')
+        else:
+            return 0
+        return 1
 
     def loadFromIds(self, Ids):
 
@@ -243,36 +285,6 @@ class MultiViewMongo(object):
                 document[key] = value
 
         return document
-
-
-# if __name__ == "__main__":
-#     db = MultiViewMongo('test', 'test_collection')
-#
-#     test_doc = dict()
-#
-#     proto_doc = dict()
-#     proto_doc['a'] = 1
-#     proto_doc['b'] = 2
-#
-#     proto_doc2 = dict()
-#     proto_doc2['a'] = 1
-#     proto_doc2['b'] = 2
-#
-#     image_doc = dict()
-#     image_doc['width'] = 10
-#     image_doc['height'] = 10
-#     image_doc['data'] = np.array([2,3,1,0])
-#
-#
-#
-#     test_doc['DataFile'] = 'file name'
-#     test_doc['proto_a'] = proto_doc
-#     test_doc['proto_b'] = proto_doc2
-#     test_doc['image'] = image_doc
-#
-#     db.save(test_doc)
-
-
 
 
 
