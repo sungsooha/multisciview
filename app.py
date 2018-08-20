@@ -129,9 +129,14 @@ def get_sample():
     path = data['path']
     recursive = data['recursive']
 
+    data = Data.get_samples(sampleNames, path, recursive)
+
+    for key, value in data.items():
+        print(key, len(value), value[0])
+
     return json.dumps({
         'sampleList': sampleNames,
-        'sampleData': Data.get_samples(sampleNames, path, recursive)
+        'sampleData': data
     })
 
 @app.route('/api/data/tiff', methods=['POST'])
