@@ -22661,6 +22661,8 @@ var get_data = function get_data(state, payload) {
         sampleData = payload.sampleData;
 
 
+    console.log(sampleList);
+
     var dataBySamples = _extends({}, state.dataBySamples);
     var keyList = sampleList.map(function (name) {
         dataBySamples[name] = [].concat(_toConsumableArray(sampleData[name]));
