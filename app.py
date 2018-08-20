@@ -131,8 +131,8 @@ def get_sample():
 
     data = Data.get_samples(sampleNames, path, recursive)
 
-    for key, value in data.items():
-        print(key, len(value), value[0])
+    # for key, value in data.items():
+    #     print(key, len(value), value[0])
 
     return json.dumps({
         'sampleList': sampleNames,

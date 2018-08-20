@@ -17,6 +17,8 @@ class Parser(object):
         if key in doc:
             val = doc[key]
 
+            print(key, val)
+
             if not isinstance(default_value, str):
                 val = float(val)
             else:
@@ -85,6 +87,7 @@ class Parser(object):
                     ex_value = self._get_value_by_key(ex_att,
                                                       self.config['RVAL'],
                                                       default_value)
+
                     pr_dict[ex_name] = ex_value
                 self._add_protocol(pr_name, pr_time, pr_dict, doc)
         except ParseError:
