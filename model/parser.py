@@ -17,10 +17,12 @@ class Parser(object):
         if key in doc:
             val = doc[key]
 
-            print(key, val)
-
             if not isinstance(default_value, str):
                 val = float(val)
+
+                if np.isnan(val) or np.isinf(val):
+                    val = float(0)
+
             else:
                 val = self._get_value(val.split('/'))
 
