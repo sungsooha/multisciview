@@ -620,7 +620,7 @@ function flush() {
 function attemptVertx() {
   try {
     var r = require;
-    var vertx = __webpack_require__(/*! vertx */ 728);
+    var vertx = __webpack_require__(/*! vertx */ 734);
     vertxNext = vertx.runOnLoop || vertx.runOnContext;
     return useVertxTimer();
   } catch (e) {
@@ -1676,7 +1676,7 @@ return Promise$1;
 
 /***/ }),
 
-/***/ 728:
+/***/ 734:
 /*!***********************!*\
   !*** vertx (ignored) ***!
   \***********************/
