@@ -34,6 +34,9 @@ class Syncer(object):
         self.interval = interval
         # callback on finished
         self.onFinished = onFinished
+        # start & end time
+        self.start_t = 0
+        self.end_t = 0
 
         # thread
         self.t = None
@@ -47,6 +50,8 @@ class Syncer(object):
         return copy.deepcopy(self.project)
 
     def _process(self):
+        self.start_t = time.time()
+
         data_root = self.project['path']
         separator = self.project['separator']
         project_name = self.project['name']
@@ -107,6 +112,7 @@ class Syncer(object):
             self.name, data_root, (end_t - start_t) / 60
         ))
 
+        self.end_t = time.time()
         if self.onFinished:
             self.onFinished()
 

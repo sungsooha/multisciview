@@ -104,6 +104,35 @@ def sync_progress():
         projects.append(project)
     return json.dumps(projects)
 
+# ----------------------------------------------------------------------------
+# Data
+# ----------------------------------------------------------------------------
+@app.route('/api/data/samplelist', methods=['POST'])
+def get_db_samplelist():
+    project = request.get_json()
+    samplelist = Data.get_samplelist(project)
+    return json.dumps(samplelist)
+
+@app.route('/api/data/sample', methods=['POST'])
+def get_sample():
+    data = request.get_json()
+    sampleNames = data['sampleNames']
+    project = data['project']
+
+    data = Data.get_samples(sampleNames, project)
+
+    return json.dumps({
+        'sampleList': sampleNames,
+        'sampleData': data
+    })
+
+@app.route('/api/data/tiff', methods=['POST'])
+def get_tiff():
+    data = request.get_json()
+    id = data['id']
+    db = data['db']
+    col = data['col']
+    return json.dumps(Data.get_tiff(id, db, col))
 
 
 # ----------------------------------------------------------------------------

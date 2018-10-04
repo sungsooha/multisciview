@@ -124,6 +124,38 @@ def load_image(colCursor, fsCursor, id, type):
 
     return result
 
+def replace_objid_to_str(doc):
+    if not isinstance(doc, dict):
+        return doc
+
+    for (key, value) in doc.items():
+        if isinstance(value, ObjectId):
+            doc[key] = str(value)
+        elif isinstance(value, dict):
+            doc[key] = replace_objid_to_str(value)
+
+    return doc
+
+def flatten_dict(d):
+    def expand(key, value):
+        if isinstance(value, dict):
+            return [(key + '/' + k, v) for k, v in flatten_dict(value).items()]
+        else:
+            return [(key, value)]
+
+    items = [item for k, v in d.items() for item in expand(k, v)]
+    return dict(items)
+
+def after_query(res):
+    """Post processing on queried results"""
+    if not isinstance(res, list):
+        res = [res]
+
+    res = [replace_objid_to_str(doc) for doc in res]
+    res = [flatten_dict(doc) for doc in res]
+
+    return res
+
 
 if __name__ == '__main__':
     from config import CONFIG

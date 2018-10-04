@@ -3,7 +3,7 @@ import glob
 import json
 import copy
 from model.parser import Parser
-from model.database import DataBase
+from model.database import DataBase, load_xml, load_image, after_query
 from model.syncer_v2 import Syncer
 from model.utils import load_json
 
@@ -61,7 +61,7 @@ class DataHandler(object):
         syncer_key = project['name']
         # check if the project is running (possibly by another clients)
         # if it is running, returns the project information currently used
-        if syncer_key in self.syncer_pool:
+        if syncer_key in self.syncer_pool and self.syncer_pool[syncer_key].t.is_alive():
             return 'RUNNING', self.syncer_pool[syncer_key].get_progress()
         # check max_num_syncer
         # if there are equal to or more than max_num_syncers running workers,
@@ -105,17 +105,66 @@ class DataHandler(object):
         results = []
         to_delete = []
         for key, worker in self.syncer_pool.items():
-            finished = not worker.t.is_alive
+            finished = not worker.t.is_alive()
             project = worker.get_progress()
             results.append((finished, project))
 
             if finished:
                 to_delete.append(key)
 
+        # delete based on the time stamp..
+        # (1 hours later after finishing update)
         for key in to_delete:
-            del self.syncer_pool[key]
+            worker = self.syncer_pool[key]
+            if abs(time.time() - worker.end_t) > 3600:
+                del self.syncer_pool[key]
 
         return results
+
+    def get_samplelist(self, project):
+        db = project['db']
+        col = project['col']
+
+        h, _ = self.DB.get_db(db, col)
+        pipeline = [
+            {"$match": {"project": project['name']}},
+            {"$match": {"sample": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$sample", "count": {"$sum": 1}}}
+        ]
+        res = list(h.aggregate(pipeline))
+        return res
+
+    def get_samples(self, sampleNames, project):
+        db = project['db']
+        col = project['col']
+
+        h, _ = self.DB.get_db(db, col)
+
+        sampleData = {}
+        for name in sampleNames:
+            res = load_xml(h, name, project['name'])
+            res = after_query(res)
+
+            sampleData[name] = res
+
+        return sampleData
+
+    def get_tiff(self, id, db, col):
+        colCursor, fsCursor = self.DB.get_db(db, col)
+
+        res = load_image(colCursor, fsCursor, id, 'tiff')
+        if res is None:
+            return []
+
+        if isinstance(res, list):
+            res = res[0]
+
+        data = res['tiff']['data']
+        res['tiff']['data'] = data.tolist()
+        return res['tiff']
+
+
+
 
     def check_syncer(self, syncer_key):
         if syncer_key not in self.syncer_pool:
@@ -167,42 +216,47 @@ if __name__ == '__main__':
     project_dir = '../projects'
     DATA = DataHandler(CONFIG, project_dir)
 
-    # for the debugging purpose, get project information from DATA
-    project_a = copy.deepcopy(DATA.projects[0])
-    project_a['filename'] = "test_saxs_a.json"
-    project_a['db'] = 'test_db'
-    project_a['col'] = 'test_col_a'
-    project_b = copy.deepcopy(DATA.projects[0])
-    project_b['filename'] = "test_saxs_b.json"
-    project_b['db'] = 'test_db'
-    project_b['col'] = 'test_col_b'
-    project_c = copy.deepcopy(DATA.projects[0])
-    project_c['filename'] = "test_saxs_c.json"
-    project_c['db'] = 'test_db_2'
-    project_c['col'] = 'test_col_c'
-    projects = [project_a, project_b, project_c]
+    project = copy.deepcopy(DATA.projects[0])
+    samplelist = DATA.get_samplelist(project)
 
-    # run syncers
-    for proj in projects:
-        DATA.run_syncer(proj)
+    print(samplelist)
 
-    while DATA.num_syncers:
-        for p_idx in range(len(projects)):
-            syncer_key = projects[p_idx]['filename']
-            finished, proj = DATA.check_syncer(syncer_key)
-            if finished is None:
-                print('Why None???')
-            else:
-                print('{:s}: {:s}, [{:s}, {:s}, {:s}]'.format(
-                    proj['filename'],
-                    'FINISHED' if finished else 'RUNNING',
-                    proj['xml'], proj['jpg'], proj['tiff']
-                ))
-                projects[p_idx] = proj
-
-                if finished:
-                    pp.pprint(proj)
-        time.sleep(30)
+    # # for the debugging purpose, get project information from DATA
+    # project_a = copy.deepcopy(DATA.projects[0])
+    # project_a['filename'] = "test_saxs_a.json"
+    # project_a['db'] = 'test_db'
+    # project_a['col'] = 'test_col_a'
+    # project_b = copy.deepcopy(DATA.projects[0])
+    # project_b['filename'] = "test_saxs_b.json"
+    # project_b['db'] = 'test_db'
+    # project_b['col'] = 'test_col_b'
+    # project_c = copy.deepcopy(DATA.projects[0])
+    # project_c['filename'] = "test_saxs_c.json"
+    # project_c['db'] = 'test_db_2'
+    # project_c['col'] = 'test_col_c'
+    # projects = [project_a, project_b, project_c]
+    #
+    # # run syncers
+    # for proj in projects:
+    #     DATA.run_syncer(proj)
+    #
+    # while DATA.num_syncers:
+    #     for p_idx in range(len(projects)):
+    #         syncer_key = projects[p_idx]['filename']
+    #         finished, proj = DATA.check_syncer(syncer_key)
+    #         if finished is None:
+    #             print('Why None???')
+    #         else:
+    #             print('{:s}: {:s}, [{:s}, {:s}, {:s}]'.format(
+    #                 proj['filename'],
+    #                 'FINISHED' if finished else 'RUNNING',
+    #                 proj['xml'], proj['jpg'], proj['tiff']
+    #             ))
+    #             projects[p_idx] = proj
+    #
+    #             if finished:
+    #                 pp.pprint(proj)
+    #     time.sleep(30)
 
 
 

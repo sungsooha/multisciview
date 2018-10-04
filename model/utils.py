@@ -10,3 +10,4 @@ def load_json(filename):
         data = None
 
     return data
+
