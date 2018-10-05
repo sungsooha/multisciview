@@ -756,7 +756,6 @@ class DBHandler(object):
         res['tiff']['data'] = data.tolist()
         return res['tiff']
 
-
 class DBHandlerWithSyncer(DBHandler):
     """
     On top of DBHandler, implement syncer handler here.
