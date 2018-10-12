@@ -1,6 +1,18 @@
 webpackJsonpReMultiview([0],{
 
-/***/ 276:
+/***/ 1037:
+/*!***********************!*\
+  !*** vertx (ignored) ***!
+  \***********************/
+/*! dynamic exports provided */
+/*! all exports used */
+/***/ (function(module, exports) {
+
+/* (ignored) */
+
+/***/ }),
+
+/***/ 447:
 /*!********************************************!*\
   !*** ./node_modules/whatwg-fetch/fetch.js ***!
   \********************************************/
@@ -473,7 +485,7 @@ webpackJsonpReMultiview([0],{
 
 /***/ }),
 
-/***/ 277:
+/***/ 448:
 /*!******************************************************!*\
   !*** ./node_modules/es6-promise/dist/es6-promise.js ***!
   \******************************************************/
@@ -620,11 +632,7 @@ function flush() {
 function attemptVertx() {
   try {
     var r = require;
-<<<<<<< HEAD
-    var vertx = __webpack_require__(/*! vertx */ 720);
-=======
-    var vertx = __webpack_require__(/*! vertx */ 731);
->>>>>>> master
+    var vertx = __webpack_require__(/*! vertx */ 1037);
     vertxNext = vertx.runOnLoop || vertx.runOnContext;
     return useVertxTimer();
   } catch (e) {
@@ -1676,23 +1684,7 @@ return Promise$1;
 
 //# sourceMappingURL=es6-promise.map
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(/*! ./../../process/browser.js */ 9), __webpack_require__(/*! ./../../webpack/buildin/global.js */ 44)))
-
-/***/ }),
-
-<<<<<<< HEAD
-/***/ 720:
-=======
-/***/ 731:
->>>>>>> master
-/*!***********************!*\
-  !*** vertx (ignored) ***!
-  \***********************/
-/*! dynamic exports provided */
-/*! all exports used */
-/***/ (function(module, exports) {
-
-/* (ignored) */
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(/*! ./../../process/browser.js */ 12), __webpack_require__(/*! ./../../webpack/buildin/global.js */ 52)))
 
 /***/ })
 

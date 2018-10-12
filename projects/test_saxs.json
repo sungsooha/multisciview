@@ -1,0 +1,17 @@
+{
+    "path": "/Users/scott/Desktop/data/saxs",
+    "last_updated": "2018-10-04 14:39:42",
+    "description": "test samples",
+    "jpg": "5534/5534",
+    "status": "FINISHED",
+    "tiff": "5607/5607",
+    "db": "test_db",
+    "name": "saxs",
+    "xml": "5534/5534",
+    "author": "sungsoo ha",
+    "progress": 100,
+    "filename": "test_saxs.json",
+    "valid": "true",
+    "separator": "_th0",
+    "col": "test_col"
+}
