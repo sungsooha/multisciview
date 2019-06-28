@@ -104,7 +104,7 @@ class Parser(object):
 
                 # special case for thumbnails protocol
                 # we will treat thumbnails (jpg) in different routine.
-                if pr_name == 'thumbnails':
+                if 'thumbnail' in pr_name:
                     continue
 
                 pr_dict = dict()

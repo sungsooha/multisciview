@@ -2,6 +2,7 @@ import os
 import glob
 import json
 import copy
+import time
 from model.parser import Parser
 from model.database import DataBase, load_xml, load_image, after_query
 from model.syncer_v2 import Syncer
@@ -49,7 +50,7 @@ class DataHandler(object):
                 self.projects[p_idx] = copy.deepcopy(project)
                 updated = True
         if not updated:
-            projects.append(project)
+            self.projects.append(project)
 
     def save_project(self, project):
         filename = project['filename']
