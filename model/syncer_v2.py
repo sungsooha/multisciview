@@ -53,7 +53,8 @@ class Syncer(object):
         self.start_t = time.time()
 
         data_root = self.project['path']
-        separator = self.project['separator']
+        # separator could be single or multiple with ';' delimiter
+        separator = self.project['separator'].split(';')
         project_name = self.project['name']
         print('{:s} starts syncing under {:s}'.format(self.name, data_root))
 
@@ -83,7 +84,17 @@ class Syncer(object):
             count = 0
             for f in files:
                 basename = os.path.basename(f)
-                sample_name = basename.split(separator)[0]
+
+                # get sample name from the file name
+                sample_name = basename
+                for sep in separator:
+                    if len(sep) == 0: continue
+                    tmp = basename.split(sep)[0]
+                    if len(tmp) < len(sample_name):
+                        sample_name = tmp
+                #sample_name = basename.split(separator)[0]
+
+
                 # parsing
                 doc = self.parser.run(
                     f,
@@ -94,7 +105,7 @@ class Syncer(object):
                 # update
                 if ext == 'xml':
                     save_document(self.colCursor, doc)
-                else:
+                elif ext == 'tiff':
                     save_image_document(self.colCursor, self.fsCursor, doc, ext)
                 count = count + 1
                 # update progress

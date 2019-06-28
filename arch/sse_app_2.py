@@ -41,6 +41,15 @@ class DataBase(object):
     q.put(['test 1', 'test 11', 'test 111'])
     q.put(['test 2', 'test 22', 'test 222'])
     q.put(['test 3', 'test 33', 'test 333'])
+    q.put(['test 1', 'test 11', 'test 111'])
+    q.put(['test 2', 'test 22', 'test 222'])
+    q.put(['test 3', 'test 33', 'test 333'])
+    q.put(['test 1', 'test 11', 'test 111'])
+    q.put(['test 2', 'test 22', 'test 222'])
+    q.put(['test 3', 'test 33', 'test 333'])
+    q.put(['test 1', 'test 11', 'test 111'])
+    q.put(['test 2', 'test 22', 'test 222'])
+    q.put(['test 3', 'test 33', 'test 333'])
 
     def __init__(self):
         if DataBase.thread is None:
@@ -64,7 +73,7 @@ class DataBase(object):
     @staticmethod
     def frames():
         while True:
-            time.sleep(1)
+            time.sleep(5)
             yield DataBase.q.get()
         #raise RuntimeError('Must be implemented by subclasses')
 
@@ -76,12 +85,13 @@ class DataBase(object):
         while True:
             frame = cls.q.get()
             for f in frame:
-                #print('frame: ', f)
+                print('frame check: ', f)
                 DataBase.frame = f
                 DataBase.event.set()
-                time.sleep(0.001)
+                #time.sleep(0.001)
+                time.sleep(10)
 
-            if time.time() - DataBase.last_access > 10:
+            if time.time() - DataBase.last_access > 100:
                 #frames_iterator.close()
                 print('kill data thread')
                 break
@@ -104,7 +114,8 @@ def publish():
 def gen(data):
     while True:
         frame = data.get_frame()
-        print(frame)
+        #print('frame gen: ', frame)
+        #time.sleep(5)
         yield "data: %s\n\n" % frame
 
 @app.route('/stream')
