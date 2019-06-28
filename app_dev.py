@@ -2,6 +2,8 @@ import os
 import json
 from flask import Flask, Response, request, render_template
 from model.dataModel_v2 import DataHandler
+
+# todo: deprecate config, it is only used for DB host address and port number
 from config import CONFIG
 
 
